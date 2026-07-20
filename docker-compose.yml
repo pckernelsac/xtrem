@@ -1,3 +1,9 @@
+# Entorno de DESARROLLO local. Para producción es `docker-compose.dokploy.yml`.
+#
+# Los puertos se publican sólo en 127.0.0.1 y la contraseña no tiene valor por
+# defecto: si este archivo se ejecutara por error en un servidor —Dokploy busca
+# `docker-compose.yml` por defecto— falla en el arranque en vez de dejar un
+# Postgres accesible desde internet con una clave trivial.
 name: zonaxtrema
 
 services:
@@ -7,10 +13,10 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-zonaxtrema}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-zonaxtrema}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?definelo en .env (copia .env.example)}
       POSTGRES_DB: ${POSTGRES_DB:-zonaxtrema}
     ports:
-      - "${POSTGRES_PORT:-5433}:5432"
+      - "127.0.0.1:${POSTGRES_PORT:-5433}:5432"
     volumes:
       - zx_pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -45,7 +51,7 @@ services:
       FACTPRO_CONSULTAS_URL: ${FACTPRO_CONSULTAS_URL:-https://consultas.factpro.la/api/v1}
       FACTPRO_CONSULTAS_TOKEN: ${FACTPRO_CONSULTAS_TOKEN:-}
     ports:
-      - "${API_PORT:-8000}:8000"
+      - "127.0.0.1:${API_PORT:-8000}:8000"
     volumes:
       - ./backend:/app
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload

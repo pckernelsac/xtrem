@@ -1,0 +1,65 @@
+name: zonaxtrema
+
+services:
+  zx_db:
+    image: postgres:16-alpine
+    container_name: zx_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-zonaxtrema}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-zonaxtrema}
+      POSTGRES_DB: ${POSTGRES_DB:-zonaxtrema}
+    ports:
+      - "${POSTGRES_PORT:-5433}:5432"
+    volumes:
+      - zx_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-zonaxtrema} -d ${POSTGRES_DB:-zonaxtrema}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - zx_net
+
+  zx_api:
+    build: ./backend
+    container_name: zx_api
+    restart: unless-stopped
+    depends_on:
+      zx_db:
+        condition: service_healthy
+    environment:
+      POSTGRES_HOST: zx_db
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: ${POSTGRES_USER:-zonaxtrema}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-zonaxtrema}
+      POSTGRES_DB: ${POSTGRES_DB:-zonaxtrema}
+      SECRET_KEY: ${SECRET_KEY:-cambiar-en-produccion}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173}
+      FACTPRO_BASE_URL: ${FACTPRO_BASE_URL:-https://api.factpro.la/api/v3}
+      FACTPRO_TOKEN: ${FACTPRO_TOKEN:-}
+      # El emisor debe coincidir con la cuenta dueña del FACTPRO_TOKEN: es la
+      # que firma. Sin estas dos líneas, definirlas en .env no llega al contenedor.
+      EMISOR_RUC: ${EMISOR_RUC:-10431869662}
+      EMISOR_RAZON_SOCIAL: ${EMISOR_RAZON_SOCIAL:-ZONA XTREMA BIKES & COMPONENTES}
+      FACTPRO_CONSULTAS_URL: ${FACTPRO_CONSULTAS_URL:-https://consultas.factpro.la/api/v1}
+      FACTPRO_CONSULTAS_TOKEN: ${FACTPRO_CONSULTAS_TOKEN:-}
+    ports:
+      - "${API_PORT:-8000}:8000"
+    volumes:
+      - ./backend:/app
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    networks:
+      zx_net:
+        # El mismo alias que en Dokploy, para que el nginx.conf del frontend
+        # (que proxea a xtrem-backend:8000) sirva igual en local y en el servidor.
+        aliases:
+          - xtrem-backend
+
+volumes:
+  zx_pgdata:
+    name: zx_pgdata
+
+networks:
+  zx_net:
+    name: zx_net

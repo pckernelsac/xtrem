@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<style>
+  /* ============================================================
+     Cotización / nota de venta en ticket de 80 mm.
+
+     Mismas reglas que el ticket de la ficha: alto calculado por el
+     servicio para no desperdiciar papel, y sólo negro sobre blanco
+     porque la térmica no imprime grises.
+     ============================================================ */
+
+  @page { size: {{ ancho_mm }}mm {{ alto_mm }}mm; margin: {{ margen_mm }}mm; }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: "DejaVu Sans", sans-serif;
+    font-size: 8pt;
+    line-height: 1.35;
+    color: #000;
+  }
+
+  .centro { text-align: center; }
+  .neg    { font-weight: bold; }
+  .chico  { font-size: 7pt; }
+
+  .logo { width: 54mm; margin: 0 auto 1.5mm auto; display: block; }
+
+  h1 { font-size: 10.5pt; letter-spacing: .4pt; }
+
+  .sep  { border-top: 1px dashed #000; margin: 2mm 0; }
+  .sep2 { border-top: 2px solid #000; margin: 2mm 0; }
+
+  .fila { display: flex; justify-content: space-between; gap: 2mm; }
+  .fila .k { flex: 0 0 auto; }
+  .fila .v { text-align: right; min-width: 0; word-break: break-word; }
+
+  .bloque { margin-top: 2mm; }
+  .titulo {
+    font-weight: bold; font-size: 8pt;
+    text-transform: uppercase; letter-spacing: .3pt;
+    border-bottom: 1px solid #000; padding-bottom: .6mm; margin-bottom: 1.2mm;
+  }
+
+  table { width: 100%; border-collapse: collapse; }
+  th {
+    text-align: left; font-size: 7pt; text-transform: uppercase;
+    border-bottom: 1px solid #000; padding-bottom: .6mm;
+  }
+  td { font-size: 7.5pt; padding: .5mm 0; vertical-align: top; }
+  .qty { width: 9mm; padding-right: 1.5mm; }
+  .imp { width: 17mm; text-align: right; }
+  .detalle { font-size: 6.8pt; }
+
+  .total {
+    display: flex; justify-content: space-between;
+    font-size: 11pt; font-weight: bold; margin-top: 1mm;
+  }
+
+  .parrafo { font-size: 7.5pt; white-space: pre-wrap; }
+
+  .firma { margin-top: 8mm; text-align: center; }
+  .firma .linea { border-top: 1px solid #000; padding-top: .8mm; font-size: 6.5pt; }
+</style>
+</head>
+<body>
+
+  <img class="logo" src="{{ logo }}" alt="Zona Xtrema">
+  <div class="centro chico">
+    {{ empresa.razon_social }}<br>
+    RUC {{ empresa.ruc }}<br>
+    {{ empresa.direccion }}<br>
+    {{ empresa.telefono }}
+  </div>
+
+  <div class="sep2"></div>
+  <div class="centro">
+    <h1 class="neg">{{ titulo }}</h1>
+    <div class="neg" style="font-size:13pt; letter-spacing:1pt;">N° {{ v.numero }}</div>
+    <div class="chico">{{ estado_label }}</div>
+  </div>
+  <div class="sep2"></div>
+
+  <div class="fila"><span class="k neg">Emisión</span><span class="v">{{ fecha }}</span></div>
+  {% if es_cotizacion and valido_hasta %}
+  <div class="fila"><span class="k neg">Válida hasta</span><span class="v">{{ valido_hasta }}</span></div>
+  {% endif %}
+
+  <div class="bloque">
+    <div class="titulo">Cliente</div>
+    <div class="neg">{{ cliente.nombre }}</div>
+    {% if cliente.documento %}<div class="fila"><span class="k">Documento</span><span class="v">{{ cliente.documento }}</span></div>{% endif %}
+    {% if cliente.telefono %}<div class="fila"><span class="k">Teléfono</span><span class="v">{{ cliente.telefono }}</span></div>{% endif %}
+  </div>
+
+  <div class="bloque">
+    <div class="titulo">Detalle</div>
+    <table>
+      <thead>
+        <tr><th class="qty">Cant</th><th>Descripción</th><th class="imp">Importe</th></tr>
+      </thead>
+      <tbody>
+        {% for l in lineas %}
+        <tr>
+          <td class="qty">{{ l.cantidad }}</td>
+          <td>
+            {{ l.descripcion }}
+            <div class="detalle">
+              S/ {{ l.precio }} c/u{% if l.descuento %} · dscto S/ {{ l.descuento }}{% endif %}
+            </div>
+          </td>
+          <td class="imp">{{ l.importe }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="sep"></div>
+  <div class="fila"><span class="k">Subtotal</span><span class="v">S/ {{ subtotal }}</span></div>
+  {% if tiene_descuento %}
+  <div class="fila"><span class="k">Descuento</span><span class="v">− S/ {{ descuento }}</span></div>
+  {% endif %}
+  <div class="total"><span>TOTAL</span><span>S/ {{ total }}</span></div>
+
+  {% if pagos %}
+  <div class="bloque">
+    <div class="titulo">Pagos</div>
+    {% for p in pagos %}
+    <div class="fila"><span class="k">{{ p.metodo }}</span><span class="v">S/ {{ p.monto }}</span></div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {% if v.notas %}
+  <div class="bloque">
+    <div class="titulo">Notas</div>
+    <div class="parrafo">{{ v.notas }}</div>
+  </div>
+  {% endif %}
+
+  <div class="sep"></div>
+  {% if es_cotizacion %}
+  <div class="centro chico">
+    Precios en soles, incluyen IGV.<br>
+    {% if valido_hasta %}Vigencia hasta el {{ valido_hasta }}.<br>{% endif %}
+    Sujeta a stock. No es comprobante de pago.
+  </div>
+  <div class="firma">
+    <div class="linea">Firma de conformidad</div>
+  </div>
+  {% else %}
+  <div class="centro chico">
+    Documento interno de venta.<br>
+    Solicite su boleta o factura electrónica.
+  </div>
+  {% endif %}
+
+  <div class="centro chico" style="margin-top:3mm;">
+    {{ empresa.web }} · {{ empresa.instagram }}<br>
+    ¡Gracias por su preferencia!
+  </div>
+
+</body>
+</html>

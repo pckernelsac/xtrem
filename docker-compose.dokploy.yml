@@ -1,0 +1,91 @@
+# Despliegue en Dokploy — ERP Zona Xtrema
+#
+# En Dokploy todos los stacks comparten `dokploy-network` y el DNS de Docker
+# resuelve por nombre de servicio en TODAS las redes del contenedor. Por eso
+# aquí no hay ningún nombre genérico: servicios, red, volúmenes y routers de
+# Traefik van prefijados con `xtrem-`. Un servicio llamado `backend` podría
+# hacer que el nginx de otra app del servidor le hable a esta API, o al revés.
+#
+# La base de datos NO se define aquí: se usa el servicio Postgres creado en
+# Dokploy y se le apunta con DATABASE_URL desde App → Environment.
+
+services:
+  xtrem-backend:
+    build:
+      context: ./backend
+    restart: unless-stopped
+    environment:
+      # Conexión completa al Postgres de Dokploy. Falla ruidoso si no está:
+      # sin esto arrancaría contra el localhost del contenedor y daría un
+      # error de conexión mucho más difícil de leer.
+      DATABASE_URL: ${DATABASE_URL:?falta DATABASE_URL en App -> Environment}
+      SECRET_KEY: ${SECRET_KEY:?falta SECRET_KEY (openssl rand -hex 32)}
+      ENVIRONMENT: production
+      TIMEZONE: ${TIMEZONE:-America/Lima}
+      CORS_ORIGINS: https://${APP_DOMAIN:?falta APP_DOMAIN}
+      PUBLIC_BASE_URL: https://${APP_DOMAIN}
+
+      # Seed de permisos, roles y administrador. Dejar en "true" sólo el primer
+      # deploy; después ponerlo en "false" para no ejecutarlo en cada redeploy.
+      RUN_SEED: ${RUN_SEED:-false}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      ADMIN_NAME: ${ADMIN_NAME:-}
+
+      # --- Facturación electrónica ---
+      # Sin token, el sistema emite en modo simulación (sin validez ante SUNAT).
+      FACTPRO_BASE_URL: ${FACTPRO_BASE_URL:-https://api.factpro.la/api/v3}
+      FACTPRO_TOKEN: ${FACTPRO_TOKEN:-}
+      FACTPRO_CONSULTAS_URL: ${FACTPRO_CONSULTAS_URL:-https://consultas.factpro.la/api/v1}
+      FACTPRO_CONSULTAS_TOKEN: ${FACTPRO_CONSULTAS_TOKEN:-}
+      EMISOR_RUC: ${EMISOR_RUC:-}
+      EMISOR_RAZON_SOCIAL: ${EMISOR_RAZON_SOCIAL:-}
+    # Sin volúmenes: las fotos de productos viven en la base (tabla
+    # `producto_fotos`) y los PDF se renderizan al vuelo. El contenedor es
+    # desechable, todo el estado está en Postgres.
+    networks:
+      - dokploy-network   # para alcanzar el Postgres de Dokploy
+      - xtrem-internal    # para que el frontend le hable en privado
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+
+  xtrem-frontend:
+    build:
+      context: ./frontend
+      args:
+        # Vacío a propósito: el nginx de esta misma imagen proxea /api al
+        # backend, así que el navegador pide siempre al mismo origen.
+        VITE_API_URL: ""
+    restart: unless-stopped
+    depends_on:
+      xtrem-backend:
+        condition: service_healthy
+    networks:
+      - dokploy-network   # para que Traefik lo alcance
+      - xtrem-internal
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=dokploy-network
+
+      # HTTPS
+      - traefik.http.routers.xtrem-frontend.rule=Host(`${APP_DOMAIN}`)
+      - traefik.http.routers.xtrem-frontend.entrypoints=websecure
+      - traefik.http.routers.xtrem-frontend.tls.certresolver=letsencrypt
+      - traefik.http.services.xtrem-frontend.loadbalancer.server.port=80
+
+      # HTTP -> HTTPS
+      - traefik.http.routers.xtrem-frontend-web.rule=Host(`${APP_DOMAIN}`)
+      - traefik.http.routers.xtrem-frontend-web.entrypoints=web
+      - traefik.http.routers.xtrem-frontend-web.middlewares=xtrem-redirect-https
+      - traefik.http.middlewares.xtrem-redirect-https.redirectscheme.scheme=https
+      - traefik.http.middlewares.xtrem-redirect-https.redirectscheme.permanent=true
+
+networks:
+  dokploy-network:
+    external: true
+  xtrem-internal:
+    driver: bridge

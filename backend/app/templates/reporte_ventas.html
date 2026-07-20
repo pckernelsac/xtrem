@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<style>
+  @page { size: A4; margin: 12mm 12mm 14mm 12mm; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "DejaVu Sans", sans-serif; font-size: 9pt; color: #111; }
+
+  .cab { display: flex; align-items: center; gap: 4mm; border-bottom: 2pt solid #e2201f; padding-bottom: 3mm; }
+  .cab img { height: 12mm; }
+  .cab .t h1 { font-size: 14pt; color: #111; }
+  .cab .t p { font-size: 8pt; color: #666; }
+
+  .rango { margin-top: 2mm; font-size: 8.5pt; color: #444; }
+
+  .kpis { display: flex; gap: 4mm; margin-top: 5mm; }
+  .kpi { flex: 1; border: 1pt solid #ddd; border-radius: 2mm; padding: 3mm; }
+  .kpi .lbl { font-size: 7.5pt; color: #666; text-transform: uppercase; }
+  .kpi .val { font-size: 15pt; font-weight: bold; margin-top: 1mm; }
+  .kpi .val.rojo { color: #e2201f; }
+
+  h2 { font-size: 10pt; color: #e2201f; margin: 6mm 0 2mm; text-transform: uppercase; }
+
+  table { width: 100%; border-collapse: collapse; }
+  th { background: #111; color: #fff; font-size: 7.5pt; text-align: left; padding: 1.6mm 2mm; text-transform: uppercase; }
+  td { border-bottom: .5pt solid #ddd; padding: 1.4mm 2mm; font-size: 8.5pt; }
+  .num { text-align: right; }
+
+  /* Gráfico de barras horizontal, sin librerías */
+  .barra-fila { display: flex; align-items: center; gap: 2mm; margin-bottom: 1.2mm; }
+  .barra-fila .fecha { width: 24mm; font-size: 7.5pt; color: #444; }
+  .barra-fila .pista { flex: 1; background: #f0f0f0; border-radius: 1mm; height: 4.5mm; position: relative; }
+  .barra-fila .relleno { background: #e2201f; height: 100%; border-radius: 1mm; min-width: .3mm; }
+  .barra-fila .monto { width: 22mm; text-align: right; font-size: 7.5pt; }
+
+  .pie { position: fixed; bottom: 0; left: 0; right: 0; font-size: 7pt; color: #999; text-align: center; border-top: .5pt solid #ddd; padding-top: 1.5mm; }
+</style>
+</head>
+<body>
+  <div class="cab">
+    <img src="{{ logo }}" alt="">
+    <div class="t">
+      <h1>Reporte de ventas</h1>
+      <p>{{ empresa.razon_social }} · RUC {{ empresa.ruc }}</p>
+    </div>
+  </div>
+  <p class="rango">Periodo: {{ data.desde }} al {{ data.hasta }} · Generado el {{ generado }}</p>
+
+  <div class="kpis">
+    <div class="kpi"><div class="lbl">Total vendido</div><div class="val rojo">S/ {{ soles(data.total) }}</div></div>
+    <div class="kpi"><div class="lbl">N° de ventas</div><div class="val">{{ data.cantidad }}</div></div>
+    <div class="kpi"><div class="lbl">Ticket promedio</div><div class="val">S/ {{ soles(data.ticket_promedio) }}</div></div>
+  </div>
+
+  <h2>Ventas por día</h2>
+  {% if data.cantidad %}
+    {% for b in barras %}
+    <div class="barra-fila">
+      <span class="fecha">{{ b.fecha }}</span>
+      <span class="pista"><span class="relleno" style="width: {{ '%.1f'|format(b.pct) }}%"></span></span>
+      <span class="monto">S/ {{ soles(b.total) }}</span>
+    </div>
+    {% endfor %}
+  {% else %}
+    <p style="color:#999; font-size:8.5pt;">Sin ventas en el periodo.</p>
+  {% endif %}
+
+  <h2>Por método de pago</h2>
+  <table>
+    <thead><tr><th>Método</th><th class="num">Total S/</th></tr></thead>
+    <tbody>
+      {% for metodo, monto in data.por_metodo.items() %}
+      <tr><td>{{ metodo }}</td><td class="num">{{ soles(monto) }}</td></tr>
+      {% else %}
+      <tr><td colspan="2" style="color:#999;">Sin cobros registrados.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <div class="pie">{{ empresa.direccion }} · {{ empresa.telefono }} · {{ empresa.web }}</div>
+</body>
+</html>

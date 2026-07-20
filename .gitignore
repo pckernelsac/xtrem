@@ -1,0 +1,46 @@
+# --- Secretos: el repositorio es público, nada de esto entra ---
+.env
+.env.*
+!.env.example
+backend/.env
+backend/.env.*
+!backend/.env.example
+frontend/.env
+frontend/.env.*
+
+# --- Datos: los dumps traen nombres, DNI y teléfonos de clientes reales ---
+backups/
+*.sql
+*.sql.gz
+
+# --- Capturas y material de referencia (suelen mostrar datos de clientes) ---
+*.jpg
+*.jpeg
+*.png
+*.webp
+# El logo y los iconos de la app sí son parte del producto
+!frontend/public/**
+!backend/app/_icons/**
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# --- Node / build ---
+node_modules/
+dist/
+dist-ssr/
+.vite/
+*.local
+
+# --- Sistema y editores ---
+*.log
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

@@ -1,0 +1,61 @@
+{#
+  Iconos de las pestañas de sección, como SVG inline.
+
+  Se dibujan a mano en vez de usar emoji porque el contenedor no trae fuente
+  de emoji: los glifos saldrían como cajas vacías en el PDF.
+
+  El tamaño va SIEMPRE en unidades absolutas sobre el propio <svg>: con
+  width/height al 100% WeasyPrint ignora la caja del padre y el icono se
+  desborda sobre el resto de la página.
+#}
+
+{% macro icono(nombre, tam="3.3mm") %}
+{%- set st = "width:" ~ tam ~ ";height:" ~ tam ~ ";display:block;" -%}
+{% if nombre == "persona" %}
+  <svg viewBox="0 0 24 24" style="{{ st }}" fill="#fff">
+    <circle cx="12" cy="7.5" r="4"/>
+    <path d="M3.5 21c0-4.7 3.8-7.5 8.5-7.5s8.5 2.8 8.5 7.5z"/>
+  </svg>
+{% elif nombre == "bici" %}
+  <svg viewBox="0 0 24 24" style="{{ st }}" fill="none" stroke="#fff" stroke-width="1.9"
+       stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="5.5" cy="16.5" r="4"/>
+    <circle cx="18.5" cy="16.5" r="4"/>
+    <path d="M5.5 16.5 10 8h4l4.5 8.5M9 8h6M11 16.5 14 8"/>
+  </svg>
+{% elif nombre == "calendario" %}
+  <svg viewBox="0 0 24 24" style="{{ st }}" fill="#fff">
+    <rect x="3" y="5" width="18" height="16" rx="2"/>
+    <rect x="3" y="9.5" width="18" height="1.6" fill="#e2201f"/>
+    <rect x="6.5" y="2.5" width="2.2" height="4.5" rx="1"/>
+    <rect x="15.3" y="2.5" width="2.2" height="4.5" rx="1"/>
+    <rect x="6" y="13.5" width="3" height="2.6" fill="#e2201f"/>
+    <rect x="10.5" y="13.5" width="3" height="2.6" fill="#e2201f"/>
+    <rect x="15" y="13.5" width="3" height="2.6" fill="#e2201f"/>
+  </svg>
+{% elif nombre == "llave" %}
+  <svg viewBox="0 0 24 24" style="{{ st }}" fill="none" stroke="#fff" stroke-width="2.4"
+       stroke-linecap="round" stroke-linejoin="round">
+    <path d="M20 4.5a5.2 5.2 0 0 1-7 6.8L5.5 18.8a2 2 0 1 1-2.8-2.8l7.5-7.5a5.2 5.2 0 0 1 6.8-7l-3.2 3.2 2.9 2.9z"/>
+  </svg>
+{% elif nombre == "engranaje" %}
+  <svg viewBox="0 0 24 24" style="{{ st }}" fill="#fff">
+    <path d="M12 1.8l1.6 2.7 3-1 .3 3.1 3 .9-1.5 2.7 1.5 2.7-3 .9-.3 3.1-3-1L12 22.2l-1.6-2.7-3 1-.3-3.1-3-.9 1.5-2.7-1.5-2.7 3-.9.3-3.1 3 1z"/>
+    <circle cx="12" cy="12" r="3.4" fill="#e2201f"/>
+  </svg>
+{% elif nombre == "portapapeles" %}
+  <svg viewBox="0 0 24 24" style="{{ st }}" fill="#fff">
+    <rect x="4.5" y="4" width="15" height="18" rx="2"/>
+    <rect x="8.5" y="1.8" width="7" height="4" rx="1.4"/>
+    <rect x="7.5" y="10" width="9" height="1.6" fill="#e2201f"/>
+    <rect x="7.5" y="13.6" width="9" height="1.6" fill="#e2201f"/>
+    <rect x="7.5" y="17.2" width="6" height="1.6" fill="#e2201f"/>
+  </svg>
+{% elif nombre == "firma" %}
+  <svg viewBox="0 0 24 24" style="{{ st }}" fill="none" stroke="#fff" stroke-width="2.1"
+       stroke-linecap="round" stroke-linejoin="round">
+    <path d="M2.5 17.5c3.5 0 3.5-9 7-9s3.5 9 7 9c2 0 3.5-1.5 5-4"/>
+    <path d="M3 21.5h18"/>
+  </svg>
+{% endif %}
+{% endmacro %}

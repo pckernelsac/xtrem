@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Ficha {{ d.numero }} · Zona Xtrema</title>
+<style>
+  :root {
+    --rojo: #e2201f; --negro: #0a0a0a; --gris: #6b6b73; --linea: #e4e4e7;
+    --verde: #16a34a; --ambar: #d97706; --azul: #0284c7;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, "Segoe UI", Roboto, sans-serif; background: #f4f4f5; color: var(--negro); line-height: 1.5; }
+  .wrap { max-width: 620px; margin: 0 auto; padding: 0 0 40px; }
+
+  header { background: var(--negro); color: #fff; padding: 20px 18px; }
+  header .marca { display: flex; align-items: center; gap: 12px; }
+  header .logo { height: 34px; }
+  header .marca b { font-size: 17px; letter-spacing: .3px; }
+  header .marca span { display: block; font-size: 11px; color: #a1a1aa; }
+
+  .hero { background: #161616; color: #fff; padding: 18px; text-align: center; }
+  .hero .n { font-size: 13px; color: #a1a1aa; }
+  .hero .num { font-size: 30px; font-weight: 800; letter-spacing: 1px; }
+  .pill { display: inline-block; margin-top: 8px; padding: 5px 14px; border-radius: 999px; font-size: 13px; font-weight: 600; }
+  .pill.verde  { background: rgba(22,163,74,.18); color: #4ade80; }
+  .pill.ambar  { background: rgba(217,119,6,.18); color: #fbbf24; }
+  .pill.azul   { background: rgba(2,132,199,.18); color: #38bdf8; }
+  .pill.gris   { background: rgba(161,161,170,.18); color: #d4d4d8; }
+  .pill.rojo   { background: rgba(226,32,31,.2); color: #f87171; }
+
+  .card { background: #fff; border: 1px solid var(--linea); border-radius: 12px; margin: 14px 14px 0; padding: 16px; }
+  .card h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .4px; color: var(--gris); margin-bottom: 10px; }
+
+  .dato { display: flex; justify-content: space-between; gap: 10px; padding: 5px 0; font-size: 14px; }
+  .dato + .dato { border-top: 1px solid #f1f1f3; }
+  .dato .k { color: var(--gris); }
+  .dato .v { font-weight: 600; text-align: right; }
+
+  ul.serv { list-style: none; }
+  ul.serv li { padding: 4px 0 4px 18px; position: relative; font-size: 14px; }
+  ul.serv li::before { content: ""; position: absolute; left: 0; top: 11px; width: 7px; height: 7px; border-radius: 50%; background: var(--rojo); }
+
+  .parr { font-size: 14px; white-space: pre-wrap; color: #333; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  th { text-align: left; color: var(--gris); font-size: 11px; text-transform: uppercase; padding-bottom: 6px; border-bottom: 1px solid var(--linea); }
+  td { padding: 7px 0; border-bottom: 1px solid #f1f1f3; }
+  td.c { text-align: center; width: 44px; }
+
+  .garantia { border-radius: 10px; padding: 14px; text-align: center; }
+  .garantia.ok  { background: rgba(22,163,74,.08); border: 1px solid rgba(22,163,74,.3); }
+  .garantia.no  { background: rgba(107,107,115,.08); border: 1px solid var(--linea); }
+  .garantia .big { font-size: 20px; font-weight: 700; }
+
+  .comp { display: block; text-decoration: none; color: inherit; }
+  .comp .btn { display: inline-block; margin-top: 8px; background: var(--rojo); color: #fff; padding: 9px 18px; border-radius: 8px; font-size: 14px; font-weight: 600; }
+
+  .timeline { list-style: none; }
+  .timeline li { position: relative; padding: 0 0 16px 22px; border-left: 2px solid var(--linea); }
+  .timeline li:last-child { border-left-color: transparent; padding-bottom: 0; }
+  .timeline li::before { content: ""; position: absolute; left: -7px; top: 2px; width: 12px; height: 12px; border-radius: 50%; background: var(--rojo); border: 2px solid #fff; }
+  .timeline .est { font-weight: 600; font-size: 14px; }
+  .timeline .cmt { font-size: 13px; color: var(--gris); }
+  .timeline .fch { font-size: 12px; color: #a1a1aa; }
+
+  .aviso { margin: 14px 14px 0; padding: 10px 14px; border-radius: 8px; background: rgba(217,119,6,.1); border: 1px solid rgba(217,119,6,.3); color: #92400e; font-size: 12.5px; }
+
+  footer { text-align: center; color: var(--gris); font-size: 12px; margin-top: 24px; padding: 0 14px; }
+  footer b { color: var(--rojo); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="marca">
+      <img class="logo" src="{{ logo }}" alt="Zona Xtrema">
+      <div>
+        <b>Zona Xtrema</b>
+        <span>Bikes &amp; Componentes</span>
+      </div>
+    </div>
+  </header>
+
+  <div class="hero">
+    <div class="n">Ficha de mantenimiento</div>
+    <div class="num">N° {{ d.numero }}</div>
+    <div class="pill {{ tono }}">{{ d.estado_label }}</div>
+  </div>
+
+  {% if comprobante and comprobante.es_simulado %}
+  <div class="aviso">Este comprobante es de prueba y no tiene validez tributaria.</div>
+  {% endif %}
+
+  <div class="card">
+    <h2>Tu bicicleta</h2>
+    <div class="dato"><span class="k">Equipo</span><span class="v">{{ [d.bicicleta.marca, d.bicicleta.modelo] | select | join(' ') }}</span></div>
+    {% if d.bicicleta.color %}<div class="dato"><span class="k">Color</span><span class="v">{{ d.bicicleta.color }}</span></div>{% endif %}
+    <div class="dato"><span class="k">Tipo</span><span class="v">{{ d.bicicleta.tipo }}</span></div>
+    <div class="dato"><span class="k">Recepción</span><span class="v">{{ d.fecha_recepcion[:10] }}</span></div>
+    {% if d.fecha_entrega %}<div class="dato"><span class="k">Entrega</span><span class="v">{{ d.fecha_entrega[:10] }}</span></div>{% endif %}
+  </div>
+
+  {% if d.servicios %}
+  <div class="card">
+    <h2>Servicio solicitado</h2>
+    <ul class="serv">{% for s in d.servicios %}<li>{{ s }}</li>{% endfor %}</ul>
+  </div>
+  {% endif %}
+
+  {% if d.trabajo_realizado %}
+  <div class="card">
+    <h2>Trabajo realizado</h2>
+    <p class="parr">{{ d.trabajo_realizado }}</p>
+  </div>
+  {% endif %}
+
+  {% if d.repuestos %}
+  <div class="card">
+    <h2>Repuestos utilizados</h2>
+    <table>
+      <thead><tr><th class="c">Cant</th><th>Descripción</th></tr></thead>
+      <tbody>
+        {% for r in d.repuestos %}
+        <tr><td class="c">{{ r.cantidad }}</td><td>{{ r.descripcion }}{% if r.marca %} · {{ r.marca }}{% endif %}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+
+  {% if d.garantia %}
+  <div class="card">
+    <h2>Garantía</h2>
+    {% if d.garantia.vence %}
+      <div class="garantia {{ 'ok' if d.garantia.vigente else 'no' }}">
+        <div class="big">{{ d.garantia.dias }} días</div>
+        <div>{{ 'Vigente hasta el ' if d.garantia.vigente else 'Venció el ' }}{{ d.garantia.vence }}</div>
+      </div>
+    {% else %}
+      <div class="garantia no"><div class="big">{{ d.garantia.dias }} días</div><div>desde la entrega</div></div>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {% if comprobante %}
+  <div class="card">
+    <h2>Comprobante</h2>
+    {% if comprobante.pdf_url %}
+    <a class="comp" href="{{ comprobante.pdf_url }}" target="_blank" rel="noreferrer">
+      <div class="dato"><span class="k">{{ comprobante.tipo | capitalize }}</span><span class="v">{{ comprobante.numero }}</span></div>
+      <span class="btn">Ver comprobante</span>
+    </a>
+    {% else %}
+    <div class="dato"><span class="k">{{ comprobante.tipo | capitalize }}</span><span class="v">{{ comprobante.numero }}</span></div>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  <div class="card">
+    <h2>Seguimiento</h2>
+    <ul class="timeline">
+      {% for h in d.historial %}
+      <li>
+        <div class="est">{{ h.estado }}</div>
+        {% if h.comentario %}<div class="cmt">{{ h.comentario }}</div>{% endif %}
+        <div class="fch">{{ h.fecha[:16] | replace('T', ' ') }}</div>
+      </li>
+      {% endfor %}
+    </ul>
+  </div>
+
+  <footer>
+    <p><b>PASIÓN POR LAS BICICLETAS</b></p>
+    <p>{{ empresa.direccion }}</p>
+    <p>{{ empresa.telefono }} · {{ empresa.web }}</p>
+  </footer>
+</div>
+</body>
+</html>

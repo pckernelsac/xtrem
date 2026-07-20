@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<style>
+  /* ============================================================
+     Cotización / nota de venta — Zona Xtrema Bikes & Componentes
+     A4 vertical. Misma identidad que la ficha de taller: cabecera
+     negra con el logo, banda roja y caja del correlativo.
+     ============================================================ */
+
+  @page { size: A4; margin: 10mm 10mm 14mm 10mm; }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: "Liberation Sans Narrow", "DejaVu Sans", sans-serif;
+    font-size: 8.4pt;
+    color: #111;
+    line-height: 1.3;
+  }
+
+  .header { background: #000; padding: 4mm 5mm; display: flex; align-items: center; justify-content: space-between; }
+  .header .logo { height: 13mm; }
+  .header .datos { color: #fff; font-size: 7.4pt; text-align: right; line-height: 1.45; }
+  .header .datos .rs { font-weight: bold; font-size: 8.6pt; }
+  .barra-roja { height: 1.6mm; background: #e2201f; }
+
+  .titulo-band { display: flex; align-items: center; justify-content: space-between; margin-top: 5mm; }
+  .titulo-band h1 { font-size: 17pt; letter-spacing: .4pt; }
+  .titulo-band .estado { font-size: 8pt; color: #555; margin-top: .8mm; }
+  .caja-numero {
+    border: 1.4pt solid #e2201f; border-radius: 2mm;
+    padding: 2mm 5mm; min-width: 48mm; text-align: center;
+  }
+  .caja-numero .lbl { color: #e2201f; font-weight: bold; font-style: italic; font-size: 8pt; }
+  .caja-numero .val { font-weight: bold; font-size: 13pt; letter-spacing: .6pt; }
+
+  /* WeasyPrint ignora `gap` en flex: la separación se hace con márgenes o el
+     contenido sale pegado (la etiqueta contra su valor). */
+  .cajas { display: flex; margin-top: 5mm; }
+  .caja { flex: 1; border: .8pt solid #ccc; border-radius: 1.6mm; padding: 2.6mm 3mm; }
+  .caja + .caja { margin-left: 4mm; }
+  .caja .tit {
+    font-weight: bold; font-size: 7.4pt; text-transform: uppercase;
+    letter-spacing: .4pt; color: #e2201f; margin-bottom: 1.4mm;
+  }
+  .caja .fila { line-height: 1.45; }
+  .caja .fila .k {
+    color: #666; display: inline-block; min-width: 24mm;
+    padding-right: 2mm; white-space: nowrap;
+  }
+  .caja .nombre { font-weight: bold; font-size: 9.4pt; margin-bottom: .8mm; }
+
+  table.items { width: 100%; border-collapse: collapse; margin-top: 5mm; }
+  table.items th {
+    background: #111; color: #fff; font-size: 7.4pt; text-transform: uppercase;
+    letter-spacing: .3pt; padding: 1.8mm 2mm; text-align: left;
+  }
+  table.items td { padding: 1.6mm 2mm; border-bottom: .5pt solid #ddd; vertical-align: top; }
+  table.items .num { text-align: right; }
+  table.items .sku { color: #888; font-size: 7pt; }
+  table.items tr.vacia td { height: 6.4mm; }
+
+  .cierre { display: flex; margin-top: 4mm; }
+  .cierre .izq { flex: 1; }
+  .totales { width: 62mm; margin-left: 4mm; }
+  .totales .fila { display: flex; justify-content: space-between; padding: 1.2mm 2mm; }
+  .totales .fila.dscto { color: #e2201f; }
+  .totales .total {
+    display: flex; justify-content: space-between;
+    background: #111; color: #fff; padding: 2.2mm 2mm;
+    font-size: 12pt; font-weight: bold; border-radius: 1.4mm; margin-top: 1mm;
+  }
+
+  .nota { border-left: 2pt solid #e2201f; padding: 1.4mm 0 1.4mm 2.6mm; margin-top: 3mm; }
+  .nota .tit { font-weight: bold; font-size: 7.4pt; text-transform: uppercase; color: #666; }
+  .nota .cuerpo { white-space: pre-wrap; }
+
+  .condiciones { margin-top: 6mm; font-size: 7.2pt; color: #555; }
+  .condiciones li { margin-left: 4mm; }
+
+  .firma { margin-top: 14mm; width: 62mm; text-align: center; }
+  .firma .linea { border-top: .8pt solid #111; padding-top: 1mm; font-size: 7.4pt; }
+
+  /* Pie repetido en cada página: el documento puede pasar de una hoja. */
+  .pie {
+    position: fixed; bottom: -9mm; left: 0; right: 0;
+    border-top: .8pt solid #ddd; padding-top: 1.4mm;
+    font-size: 6.8pt; color: #777; display: flex; justify-content: space-between;
+  }
+</style>
+</head>
+<body>
+
+  <div class="header">
+    <img class="logo" src="{{ logo }}" alt="Zona Xtrema">
+    <div class="datos">
+      <div class="rs">{{ empresa.razon_social }}</div>
+      RUC {{ empresa.ruc }}<br>
+      {{ empresa.direccion }}<br>
+      {{ empresa.telefono }} · {{ empresa.web }}
+    </div>
+  </div>
+  <div class="barra-roja"></div>
+
+  <div class="titulo-band">
+    <div>
+      <h1>{{ titulo }}</h1>
+      <div class="estado">{{ estado_label }} · Emitida el {{ fecha }}</div>
+    </div>
+    <div class="caja-numero">
+      <div class="lbl">N°</div>
+      <div class="val">{{ v.numero }}</div>
+    </div>
+  </div>
+
+  <div class="cajas">
+    <div class="caja">
+      <div class="tit">Cliente</div>
+      <div class="nombre">{{ cliente.nombre }}</div>
+      {% if cliente.documento %}<div class="fila"><span class="k">Documento</span><span>{{ cliente.documento }}</span></div>{% endif %}
+      {% if cliente.telefono %}<div class="fila"><span class="k">Teléfono</span><span>{{ cliente.telefono }}</span></div>{% endif %}
+      {% if cliente.direccion %}<div class="fila"><span class="k">Dirección</span><span>{{ cliente.direccion }}</span></div>{% endif %}
+    </div>
+    <div class="caja">
+      <div class="tit">Documento</div>
+      <div class="fila"><span class="k">Emisión</span><span>{{ fecha }}</span></div>
+      {% if es_cotizacion %}
+      <div class="fila"><span class="k">Válida hasta</span><span>{{ valido_hasta or "Sin vencimiento" }}</span></div>
+      {% endif %}
+      {% if vendedor %}<div class="fila"><span class="k">Atendido por</span><span>{{ vendedor }}</span></div>{% endif %}
+      <div class="fila"><span class="k">Moneda</span><span>Soles (S/)</span></div>
+    </div>
+  </div>
+
+  <table class="items">
+    <thead>
+      <tr>
+        <th style="width: 14mm;">Cant.</th>
+        <th>Descripción</th>
+        <th class="num" style="width: 22mm;">P. unit.</th>
+        <th class="num" style="width: 20mm;">Dscto.</th>
+        <th class="num" style="width: 24mm;">Importe</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for l in filas %}
+      <tr {% if not l.descripcion %}class="vacia"{% endif %}>
+        <td>{{ l.cantidad }}</td>
+        <td>
+          {{ l.descripcion }}
+          {% if l.sku %}<div class="sku">{{ l.sku }}</div>{% endif %}
+        </td>
+        <td class="num">{% if l.precio %}S/ {{ l.precio }}{% endif %}</td>
+        <td class="num">{{ "S/ " ~ l.descuento if l.descuento else "" }}</td>
+        <td class="num">{% if l.importe %}S/ {{ l.importe }}{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <div class="cierre">
+    <div class="izq">
+      {% if v.notas %}
+      <div class="nota">
+        <div class="tit">Notas</div>
+        <div class="cuerpo">{{ v.notas }}</div>
+      </div>
+      {% endif %}
+
+      {% if pagos %}
+      <div class="nota">
+        <div class="tit">Pagos</div>
+        {% for p in pagos %}<div>{{ p.metodo }} · S/ {{ p.monto }}</div>{% endfor %}
+      </div>
+      {% endif %}
+    </div>
+
+    <div class="totales">
+      <div class="fila"><span>Subtotal</span><span>S/ {{ subtotal }}</span></div>
+      {% if tiene_descuento %}
+      <div class="fila dscto"><span>Descuento</span><span>− S/ {{ descuento }}</span></div>
+      {% endif %}
+      <div class="total"><span>TOTAL</span><span>S/ {{ total }}</span></div>
+    </div>
+  </div>
+
+  <div class="condiciones">
+    {% if es_cotizacion %}
+    <strong>Condiciones</strong>
+    <ul>
+      <li>Precios en soles, incluyen IGV.</li>
+      <li>Vigencia{% if valido_hasta %} hasta el {{ valido_hasta }}{% endif %}; pasada esa fecha se recotiza.</li>
+      <li>Sujeta a disponibilidad de stock al momento de la aceptación.</li>
+      <li>Este documento no es comprobante de pago.</li>
+    </ul>
+    {% else %}
+    Documento interno de venta. Para efectos tributarios solicite su boleta o factura electrónica.
+    {% endif %}
+  </div>
+
+  {% if es_cotizacion %}
+  <div class="firma">
+    <div class="linea">Firma de conformidad del cliente</div>
+  </div>
+  {% endif %}
+
+  <div class="pie">
+    <span>{{ empresa.razon_social }} · RUC {{ empresa.ruc }}</span>
+    <span>{{ empresa.direccion }} · {{ empresa.telefono }}</span>
+  </div>
+
+</body>
+</html>

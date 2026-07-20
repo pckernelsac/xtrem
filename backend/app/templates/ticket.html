@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<style>
+  /* ============================================================
+     Ticket para impresora térmica de 80 mm.
+
+     El alto de página lo calcula el servicio midiendo el contenido
+     renderizado: en papel continuo, una página más alta de lo necesario
+     se traduce en papel desperdiciado en cada impresión.
+
+     Sin colores ni grises: la térmica sólo imprime negro sobre blanco,
+     y los rellenos claros salen como manchas sucias.
+     ============================================================ */
+
+  @page { size: {{ ancho_mm }}mm {{ alto_mm }}mm; margin: {{ margen_mm }}mm; }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: "DejaVu Sans", sans-serif;
+    font-size: 8pt;
+    line-height: 1.35;
+    color: #000;
+  }
+
+  .centro { text-align: center; }
+  .der    { text-align: right; }
+  .neg    { font-weight: bold; }
+  .chico  { font-size: 7pt; }
+
+  .logo { width: 54mm; margin: 0 auto 1.5mm auto; display: block; }
+
+  h1 { font-size: 10.5pt; letter-spacing: .4pt; }
+
+  /* Separadores punteados, el recurso clásico del ticket impreso */
+  .sep  { border-top: 1px dashed #000; margin: 2mm 0; }
+  .sep2 { border-top: 2px solid #000; margin: 2mm 0; }
+
+  .fila { display: flex; justify-content: space-between; gap: 2mm; }
+  .fila .k { flex: 0 0 auto; }
+  .fila .v { text-align: right; min-width: 0; word-break: break-word; }
+
+  .bloque { margin-top: 2mm; }
+  .titulo {
+    font-weight: bold; font-size: 8pt;
+    text-transform: uppercase; letter-spacing: .3pt;
+    border-bottom: 1px solid #000; padding-bottom: .6mm; margin-bottom: 1.2mm;
+  }
+
+  table { width: 100%; border-collapse: collapse; }
+  th {
+    text-align: left; font-size: 7pt; text-transform: uppercase;
+    border-bottom: 1px solid #000; padding-bottom: .6mm;
+  }
+  td { font-size: 7.5pt; padding: .5mm 0; vertical-align: top; }
+  .qty { width: 10mm; padding-right: 1.5mm; }
+  .imp { width: 16mm; text-align: right; }
+
+  .total {
+    display: flex; justify-content: space-between;
+    font-size: 11pt; font-weight: bold; margin-top: 1mm;
+  }
+
+  .servicios li { list-style: none; font-size: 7.5pt; }
+  .servicios li::before { content: "• "; }
+
+  .parrafo { font-size: 7.5pt; white-space: pre-wrap; }
+
+  .firmas { display: flex; gap: 4mm; margin-top: 6mm; }
+  .firmas > div { flex: 1; text-align: center; }
+  .firmas .linea { border-top: 1px solid #000; padding-top: .8mm; font-size: 6.5pt; }
+
+  .qr { width: 26mm; height: 26mm; margin: 0 auto; display: block; }
+</style>
+</head>
+<body>
+
+  <img class="logo" src="{{ logo }}" alt="Zona Xtrema">
+  <div class="centro chico">
+    {{ empresa.razon_social }}<br>
+    RUC {{ empresa.ruc }}<br>
+    {{ empresa.direccion }}<br>
+    {{ empresa.telefono }}
+  </div>
+
+  <div class="sep2"></div>
+  <div class="centro">
+    <h1 class="neg">FICHA DE MANTENIMIENTO</h1>
+    <div class="neg" style="font-size:13pt; letter-spacing:1pt;">N° {{ f.numero }}</div>
+    <div class="chico">{{ estado_label }}</div>
+  </div>
+  <div class="sep2"></div>
+
+  <div class="fila"><span class="k neg">Recepción</span><span class="v">{{ recepcion.fecha }} {{ recepcion.hora }} {{ "AM" if recepcion.am else "PM" }}</span></div>
+  {% if f.fecha_entrega %}
+  <div class="fila"><span class="k neg">Entrega</span><span class="v">{{ entrega.fecha }} {{ entrega.hora }} {{ "AM" if entrega.am else "PM" }}</span></div>
+  {% endif %}
+
+  <div class="bloque">
+    <div class="titulo">Cliente</div>
+    <div class="neg">{{ f.cliente.nombre }}</div>
+    <div class="fila"><span class="k">{{ f.cliente.tipo_documento.value }}</span><span class="v">{{ f.cliente.numero_documento }}</span></div>
+    {% if f.cliente.telefono %}
+    <div class="fila"><span class="k">Teléfono</span><span class="v">{{ f.cliente.telefono }}</span></div>
+    {% endif %}
+  </div>
+
+  <div class="bloque">
+    <div class="titulo">Bicicleta</div>
+    <div class="neg">{{ bici_desc }}</div>
+    <div class="fila"><span class="k">Tipo</span><span class="v">{{ f.bicicleta.tipo.value }}</span></div>
+    {% if f.bicicleta.numero_serie %}
+    <div class="fila"><span class="k">N° serie</span><span class="v">{{ f.bicicleta.numero_serie }}</span></div>
+    {% endif %}
+  </div>
+
+  {% if servicios or f.servicio_otro %}
+  <div class="bloque">
+    <div class="titulo">Servicio solicitado</div>
+    <ul class="servicios">
+      {% for s in servicios %}<li>{{ s }}</li>{% endfor %}
+      {% if f.servicio_otro %}<li>{{ f.servicio_otro }}</li>{% endif %}
+    </ul>
+  </div>
+  {% endif %}
+
+  {% if f.diagnostico_inicial %}
+  <div class="bloque">
+    <div class="titulo">Diagnóstico</div>
+    <div class="parrafo">{{ f.diagnostico_inicial }}</div>
+  </div>
+  {% endif %}
+
+  {% if f.trabajo_realizado %}
+  <div class="bloque">
+    <div class="titulo">Trabajo realizado</div>
+    <div class="parrafo">{{ f.trabajo_realizado }}</div>
+    {% if tiempo_texto %}<div class="chico">Tiempo: {{ tiempo_texto }}</div>{% endif %}
+  </div>
+  {% endif %}
+
+  {% if f.repuestos %}
+  <div class="bloque">
+    <div class="titulo">Repuestos</div>
+    <table>
+      <thead>
+        <tr><th class="qty">Cant</th><th>Descripción</th><th class="imp">Importe</th></tr>
+      </thead>
+      <tbody>
+        {% for r in repuestos %}
+        <tr>
+          <td class="qty">{{ r.cantidad }}</td>
+          <td>{{ r.descripcion }}{% if r.marca %}<br><span class="chico">{{ r.marca }}</span>{% endif %}</td>
+          <td class="imp">{{ r.subtotal }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <div class="sep"></div>
+    <div class="total"><span>TOTAL S/</span><span>{{ total }}</span></div>
+  </div>
+  {% endif %}
+
+  {% if f.observaciones or f.garantia_dias %}
+  <div class="bloque">
+    <div class="titulo">Observaciones</div>
+    {% if f.observaciones %}<div class="parrafo">{{ f.observaciones }}</div>{% endif %}
+    {% if f.garantia_dias %}<div class="neg chico">Garantía: {{ f.garantia_dias }} días</div>{% endif %}
+  </div>
+  {% endif %}
+
+  <div class="sep"></div>
+  <div class="chico">
+    <div class="neg">Condiciones</div>
+    Pasadas 2 semanas sin recoger la bicicleta se aplicará el 20% del costo total
+    por estacionamiento. El mantenimiento general tiene garantía de 7 días desde
+    la entrega, salvo rotura o desperfecto en los accesorios.
+  </div>
+
+  <div class="firmas">
+    <div>
+      {% if firma_cliente %}<img src="{{ firma_cliente }}" style="height:11mm;">{% endif %}
+      <div class="linea">FIRMA DEL CLIENTE</div>
+    </div>
+    <div>
+      {% if firma_tecnico %}<img src="{{ firma_tecnico }}" style="height:11mm;">{% endif %}
+      <div class="linea">FIRMA DEL TÉCNICO</div>
+    </div>
+  </div>
+
+  {% if qr %}
+  <div class="bloque centro">
+    <div class="sep"></div>
+    <img class="qr" src="{{ qr }}" alt="">
+    <div class="chico">Escanea para ver tu ficha completa</div>
+    {% if codigo_publico %}<div class="chico neg">Código: {{ codigo_publico }}</div>{% endif %}
+  </div>
+  {% endif %}
+
+  <div class="sep"></div>
+  <div class="centro chico neg">PASIÓN POR LAS BICICLETAS</div>
+  <div class="centro chico">{{ empresa.web }} · {{ empresa.instagram }}</div>
+  <div style="height:6mm;"></div>
+
+</body>
+</html>

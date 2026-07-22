@@ -13,6 +13,7 @@ from app.models.user import User
 from app.models.venta import Venta
 from app.schemas.comprobante import (
     AnularComprobanteIn,
+    CompartirComprobanteOut,
     ComprobanteDetail,
     ComprobanteOut,
     ComprobantePage,
@@ -25,6 +26,7 @@ from app.services.facturacion import (
     emitir_desde_venta,
 )
 from app.services.facturacion_export import exportar_comprobantes_excel
+from app.services.whatsapp import enlace_whatsapp, mensaje_comprobante, normalizar_telefono
 
 router = APIRouter(prefix="/facturacion", tags=["facturación"])
 
@@ -177,6 +179,42 @@ def emitir(
     if venta is None:
         raise HTTPException(status_code=404, detail="Venta no encontrada")
     return emitir_desde_venta(db, venta, actor.id)
+
+
+@router.post("/documentos/{comprobante_id}/whatsapp", response_model=CompartirComprobanteOut)
+def compartir_whatsapp(
+    comprobante_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_permission("facturacion.ver")),
+    telefono: str | None = Query(
+        default=None, description="Sobrescribe el teléfono del cliente"
+    ),
+) -> CompartirComprobanteOut:
+    """Arma el enlace de WhatsApp para enviar el PDF del comprobante al cliente.
+
+    No envía nada desde el servidor: devuelve el `wa.me` que abre quien atiende,
+    igual que al compartir una ficha. El PDF es el que aloja FactPro (`pdf_url`).
+    """
+    comprobante = _get(db, comprobante_id)
+    if not comprobante.pdf_url:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="El comprobante aún no tiene PDF disponible para compartir",
+        )
+
+    # Sin override, se toma el teléfono del cliente de la venta que originó el
+    # comprobante; una boleta de mostrador puede no tener cliente registrado.
+    destino = telefono
+    if not destino and comprobante.venta and comprobante.venta.cliente:
+        destino = comprobante.venta.cliente.telefono
+
+    mensaje = mensaje_comprobante(comprobante, comprobante.pdf_url)
+    return CompartirComprobanteOut(
+        url_pdf=comprobante.pdf_url,
+        telefono=normalizar_telefono(destino),
+        whatsapp_url=enlace_whatsapp(destino, mensaje),
+        mensaje=mensaje,
+    )
 
 
 @router.post("/documentos/{comprobante_id}/anular", response_model=ComprobanteDetail)

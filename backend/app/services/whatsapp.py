@@ -8,11 +8,16 @@ y el mensaje sale desde el teléfono de la tienda.
 import re
 from urllib.parse import quote
 
+from app.models.comprobante import ETIQUETAS_TIPO_COMPROBANTE, ComprobanteElectronico
 from app.models.ficha import ETIQUETAS_ESTADO, Ficha
 
 #: Perú. Los celulares son 9 dígitos y empiezan con 9.
 CODIGO_PAIS = "51"
 LARGO_NACIONAL = 9
+
+#: Encabezado y pie comunes a todos los mensajes que salen al cliente.
+ENCABEZADO = "*ZONA XTREMA BIKES & COMPONENTES*"
+PIE = "_Av. San Carlos N° 177 - Huancayo_"
 
 
 def normalizar_telefono(telefono: str | None) -> str | None:
@@ -53,7 +58,7 @@ def mensaje_ficha(ficha: Ficha, url_pdf: str) -> str:
     nombre_corto = ficha.cliente.nombre.split()[0].title()
 
     lineas = [
-        "*ZONA XTREMA BIKES & COMPONENTES*",
+        ENCABEZADO,
         "",
         f"Hola {nombre_corto}, aquí está la ficha de tu bicicleta.",
         "",
@@ -72,7 +77,38 @@ def mensaje_ficha(ficha: Ficha, url_pdf: str) -> str:
         "Puedes ver y descargar tu ficha aquí:",
         url_pdf,
         "",
-        "_Av. San Carlos N° 177 - Huancayo_",
+        PIE,
+    ]
+    return "\n".join(lineas)
+
+
+def mensaje_comprobante(comprobante: ComprobanteElectronico, url_pdf: str) -> str:
+    """Mensaje que acompaña al PDF del comprobante enviado al cliente."""
+    tipo = ETIQUETAS_TIPO_COMPROBANTE.get(comprobante.tipo.value, "Comprobante")
+
+    # La denominación puede ser el nombre real del cliente o "CLIENTES VARIOS"
+    # en una boleta de mostrador; en ese caso se evita un saludo con nombre.
+    primera = comprobante.cliente_denominacion.split()[0] if comprobante.cliente_denominacion else ""
+    saludo = f"Hola {primera.title()}, " if primera and primera.upper() != "CLIENTES" else "Hola, "
+
+    lineas = [
+        ENCABEZADO,
+        "",
+        f"{saludo}aquí está tu comprobante electrónico.",
+        "",
+        f"*{tipo} N°:* {comprobante.numero_completo}",
+        f"*Fecha:* {comprobante.fecha_emision.strftime('%d/%m/%Y')}",
+    ]
+
+    if comprobante.total is not None:
+        lineas.append(f"*Total:* S/ {comprobante.total:,.2f}")
+
+    lineas += [
+        "",
+        "Puedes ver y descargar tu comprobante aquí:",
+        url_pdf,
+        "",
+        PIE,
     ]
     return "\n".join(lineas)
 

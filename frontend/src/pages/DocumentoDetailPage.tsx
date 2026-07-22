@@ -7,6 +7,7 @@ import {
   FileCode2,
   FileText,
   Loader2,
+  MessageCircle,
   Receipt,
   RefreshCw,
 } from "lucide-react"
@@ -19,6 +20,7 @@ import { Modal } from "@/components/ui/Modal"
 import { PageHeader } from "@/components/ui/PageHeader"
 import { SkeletonCard } from "@/components/ui/skeleton"
 import { fmtFechaHora } from "@/features/clientes/types"
+import { CompartirComprobanteModal } from "@/features/facturacion/CompartirComprobanteModal"
 import {
   ESTADO_COMP_INFO,
   TIPO_COMP_LABEL,
@@ -41,6 +43,7 @@ export default function DocumentoDetailPage() {
 
   const canAnular = usePermission("facturacion.anular")
   const [anularOpen, setAnularOpen] = useState(false)
+  const [compartirOpen, setCompartirOpen] = useState(false)
   const [motivo, setMotivo] = useState("")
 
   const { data: d, isLoading } = useQuery({
@@ -105,6 +108,12 @@ export default function DocumentoDetailPage() {
         description={`${d.cliente_denominacion} · ${d.cliente_numero_documento}`}
         actions={
           <div className="flex flex-wrap gap-2">
+            {d.pdf_url && (
+              <Button variant="secondary" onClick={() => setCompartirOpen(true)}>
+                <MessageCircle className="h-3.5 w-3.5 text-[#25D366]" />
+                Enviar por WhatsApp
+              </Button>
+            )}
             <Button
               variant="secondary"
               onClick={() => consultar.mutate()}
@@ -220,6 +229,13 @@ export default function DocumentoDetailPage() {
           </pre>
         </details>
       )}
+
+      <CompartirComprobanteModal
+        open={compartirOpen}
+        onClose={() => setCompartirOpen(false)}
+        comprobanteId={d.id}
+        titulo={`${TIPO_COMP_LABEL[d.tipo]} ${d.numero_completo}`}
+      />
 
       <Modal
         open={anularOpen}

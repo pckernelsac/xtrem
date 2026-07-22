@@ -6,6 +6,7 @@ import {
   FileCode2,
   FileSpreadsheet,
   FileText,
+  MessageCircle,
   Receipt,
   Search,
 } from "lucide-react"
@@ -13,6 +14,7 @@ import {
 import { api, API_PREFIX } from "@/lib/api"
 import { Badge } from "@/components/ui/Badge"
 import { Button } from "@/components/ui/Form"
+import { CompartirComprobanteModal } from "@/features/facturacion/CompartirComprobanteModal"
 import { ExportarContadorModal } from "@/features/facturacion/ExportarContadorModal"
 import { FilterTabs } from "@/components/ui/FilterTabs"
 import { PageHeader } from "@/components/ui/PageHeader"
@@ -64,6 +66,7 @@ export default function DocumentosPage() {
   const [debounced, setDebounced] = useState("")
   const [page, setPage] = useState(1)
   const [exportOpen, setExportOpen] = useState(false)
+  const [compartir, setCompartir] = useState<Comprobante | null>(null)
 
   useEffect(() => {
     const t = setTimeout(() => {
@@ -177,6 +180,7 @@ export default function DocumentosPage() {
                   <th className="px-4 py-2.5 text-right">Total</th>
                   <th className="px-4 py-2.5">Estado SUNAT</th>
                   <th className="px-4 py-2.5">Archivos</th>
+                  <th className="px-4 py-2.5" />
                 </tr>
               </thead>
               <tbody>
@@ -236,11 +240,23 @@ export default function DocumentosPage() {
                         <ArchivoLink url={d.cdr_url} label="CDR" icon={Receipt} />
                       </div>
                     </td>
+                    <td className="px-4 py-2.5">
+                      {d.pdf_url && (
+                        <button
+                          onClick={() => setCompartir(d)}
+                          className="inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-xs font-medium text-[#25D366] hover:bg-accent"
+                          title="Enviar el PDF al WhatsApp del cliente"
+                        >
+                          <MessageCircle className="h-3.5 w-3.5" />
+                          WhatsApp
+                        </button>
+                      )}
+                    </td>
                   </tr>
                 ))}
                 {items.length === 0 && (
                   <tr>
-                    <td colSpan={7} className="px-4 py-14 text-center text-sm text-muted-foreground">
+                    <td colSpan={8} className="px-4 py-14 text-center text-sm text-muted-foreground">
                       <Receipt className="mx-auto h-8 w-8 text-muted-foreground/50" />
                       <p className="mt-2">
                         {debounced
@@ -263,6 +279,13 @@ export default function DocumentosPage() {
           />
         </div>
       )}
+
+      <CompartirComprobanteModal
+        open={Boolean(compartir)}
+        onClose={() => setCompartir(null)}
+        comprobanteId={compartir?.id ?? null}
+        titulo={compartir ? `${TIPO_COMP_LABEL[compartir.tipo]} ${compartir.numero_completo}` : ""}
+      />
     </div>
   )
 }

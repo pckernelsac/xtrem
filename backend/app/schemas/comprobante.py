@@ -69,6 +69,15 @@ class ComprobanteDetail(ComprobanteOut):
     respuesta: dict | None
 
 
+class CompartirComprobanteOut(BaseModel):
+    """Enlace armado para enviar el PDF del comprobante por WhatsApp."""
+
+    url_pdf: str
+    telefono: str | None
+    whatsapp_url: str
+    mensaje: str
+
+
 class ComprobantePage(BaseModel):
     items: list[ComprobanteOut]
     total: int

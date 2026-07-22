@@ -71,3 +71,10 @@ export type ConteoComprobantes = {
   por_estado: Record<EstadoComprobante, number>
   modo_simulacion: boolean
 }
+
+export type CompartirComprobante = {
+  url_pdf: string
+  telefono: string | null
+  whatsapp_url: string
+  mensaje: string
+}

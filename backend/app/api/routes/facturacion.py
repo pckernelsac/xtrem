@@ -2,13 +2,11 @@ import uuid
 from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
-from fastapi.security import HTTPAuthorizationCredentials
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
-from app.api.deps import bearer_scheme, get_current_user, require_permission
+from app.api.deps import require_permission
 from app.core.config import settings
-from app.core.security import create_print_token, decode_token
 from app.db.session import get_db
 from app.models.comprobante import ComprobanteElectronico, EstadoComprobante, TipoComprobante
 from app.models.user import User
@@ -22,7 +20,6 @@ from app.schemas.comprobante import (
     ConteoComprobantes,
     EmitirIn,
 )
-from app.services import factpro_client
 from app.services.facturacion import (
     anular_comprobante,
     consultar_estado,
@@ -42,46 +39,12 @@ def _get(db: Session, comprobante_id: uuid.UUID) -> ComprobanteElectronico:
 
 
 def _url_pdf_publica(comprobante: ComprobanteElectronico) -> str:
-    """URL del PDF servida por NUESTRO dominio, firmada con un token de impresión.
+    """URL pública y corta del PDF, servida por /c/{codigo}.
 
-    Así el cliente nunca ve el enlace de FactPro (que expone su dominio y el
-    RUC del emisor): abre una URL nuestra que proxea el archivo.
+    Cuelga de la raíz y usa el código corto del comprobante, así el enlace que
+    se manda por WhatsApp es breve y no expone la URL de FactPro.
     """
-    token, _ = create_print_token(str(comprobante.id))
-    return (
-        f"{settings.PUBLIC_BASE_URL}{settings.API_V1_PREFIX}"
-        f"/facturacion/documentos/{comprobante.id}/pdf?t={token}"
-    )
-
-
-def _autorizar_comprobante(
-    comprobante_id: uuid.UUID,
-    db: Session,
-    credentials: HTTPAuthorizationCredentials | None,
-    token: str | None,
-) -> ComprobanteElectronico:
-    """Permite servir el PDF con sesión iniciada O con el token de impresión.
-
-    El token va en la query porque el navegador no manda cabeceras al abrir el
-    enlace pegado en WhatsApp. Sólo habilita ese comprobante: se compara el
-    `sub` del token contra el id pedido.
-    """
-    if token:
-        payload = decode_token(token, expected_type="print")
-        if payload is None or payload.get("sub") != str(comprobante_id):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="El enlace no es válido o ya expiró",
-            )
-        return _get(db, comprobante_id)
-
-    usuario = get_current_user(credentials=credentials, db=db)
-    if not usuario.has_permission("facturacion.ver"):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Permiso requerido: facturacion.ver",
-        )
-    return _get(db, comprobante_id)
+    return f"{settings.PUBLIC_BASE_URL}/c/{comprobante.codigo_publico}"
 
 
 @router.get("/conteos", response_model=ConteoComprobantes)
@@ -262,38 +225,6 @@ def compartir_whatsapp(
         telefono=normalizar_telefono(destino),
         whatsapp_url=enlace_whatsapp(destino, mensaje),
         mensaje=mensaje,
-    )
-
-
-@router.get("/documentos/{comprobante_id}/pdf")
-def descargar_pdf(
-    comprobante_id: uuid.UUID,
-    db: Session = Depends(get_db),
-    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
-    token: str | None = Query(default=None, alias="t", description="Token de impresión"),
-) -> Response:
-    """Sirve el PDF del comprobante a través de nuestro dominio.
-
-    Proxea el archivo que aloja FactPro para que el enlace compartido no revele
-    su URL. Se abre con sesión iniciada o con el token de impresión del enlace.
-    """
-    comprobante = _autorizar_comprobante(comprobante_id, db, credentials, token)
-    if not comprobante.pdf_url:
-        raise HTTPException(status_code=404, detail="El comprobante no tiene PDF disponible")
-
-    try:
-        contenido = factpro_client.descargar_archivo(comprobante.pdf_url)
-    except factpro_client.FactProError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"No se pudo obtener el PDF: {exc.mensaje}",
-        ) from exc
-
-    nombre = f"{comprobante.tipo.value.lower()}-{comprobante.numero_completo}.pdf"
-    return Response(
-        content=contenido,
-        media_type="application/pdf",
-        headers={"Content-Disposition": f'inline; filename="{nombre}"'},
     )
 
 

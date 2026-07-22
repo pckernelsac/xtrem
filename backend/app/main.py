@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
 from app.api.router import api_router
-from app.api.routes import publico
+from app.api.routes import publico, publico_comprobante
 from app.core.audit import AuditMiddleware
 from app.core.config import settings
 from app.db.session import engine
@@ -94,8 +94,10 @@ app.openapi = _openapi_con_seguridad
 
 
 app.include_router(api_router, prefix=settings.API_V1_PREFIX)
-# Ruta corta del QR: cuelga de la raíz para no engordar el código impreso.
+# Rutas cortas que cuelgan de la raíz: el QR de la ficha (/f) y el PDF público
+# del comprobante que se manda por WhatsApp (/c), para no engordar el enlace.
 app.include_router(publico.router)
+app.include_router(publico_comprobante.router)
 
 
 @app.get("/health", tags=["infra"])

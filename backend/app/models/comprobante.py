@@ -20,6 +20,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, TimestampMixin, UUIDMixin
+from app.models.ficha import generar_codigo_publico
 
 
 class TipoComprobante(str, enum.Enum):
@@ -87,6 +88,13 @@ class ComprobanteElectronico(UUIDMixin, TimestampMixin, Base):
 
     serie: Mapped[str] = mapped_column(String(8), nullable=False)
     numero: Mapped[int] = mapped_column(nullable=False)
+
+    #: Código corto para el enlace público del PDF (/c/{codigo}) que se manda
+    #: por WhatsApp. Es la única credencial: equivale a la copia que el cliente
+    #: ya tiene. Comparte alfabeto y largo con el código de las fichas.
+    codigo_publico: Mapped[str] = mapped_column(
+        String(16), unique=True, index=True, default=lambda: generar_codigo_publico()
+    )
 
     @property
     def numero_completo(self) -> str:

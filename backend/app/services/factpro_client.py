@@ -173,3 +173,20 @@ def consultar(serie: str, numero: int) -> dict[str, Any]:
         settings.FACTPRO_PATH_CONSULTA,
         {"serie": serie, "numero": numero},
     )
+
+
+def descargar_archivo(url: str) -> bytes:
+    """Descarga un archivo (PDF/XML/CDR) alojado por FactPro y devuelve sus bytes.
+
+    Sirve para reexponer el PDF a través de nuestro propio dominio, sin
+    revelar al cliente la URL de FactPro. Los enlaces de `/file/...` son
+    públicos, así que no llevan la cabecera de autorización.
+    """
+    try:
+        resp = httpx.get(
+            url, timeout=settings.FACTPRO_TIMEOUT_SEGUNDOS, follow_redirects=True
+        )
+        resp.raise_for_status()
+    except httpx.HTTPError as exc:
+        raise FactProError(f"No se pudo descargar el archivo de FactPro: {exc}") from exc
+    return resp.content

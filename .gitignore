@@ -20,7 +20,7 @@ backups/
 *.webp
 # El logo y los iconos de la app sí son parte del producto
 !frontend/public/**
-!backend/app/_icons/**
+!backend/app/assets/**
 
 # --- Python ---
 __pycache__/

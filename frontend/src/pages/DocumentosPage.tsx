@@ -33,7 +33,7 @@ import {
 const PAGE_SIZE = 25
 type Tab = "TODAS" | EstadoComprobante
 
-/** Enlace a un archivo del comprobante (XML/PDF/CDR), estilo FactPro. */
+/** Enlace a un archivo del comprobante (XML/PDF/CDR). */
 function ArchivoLink({
   url,
   label,
@@ -105,7 +105,7 @@ export default function DocumentosPage() {
     <div>
       <PageHeader
         title="Documentos electrónicos"
-        description="Comprobantes emitidos a SUNAT vía FactPro."
+        description="Comprobantes emitidos a SUNAT."
         actions={
           <Button variant="secondary" onClick={() => setExportOpen(true)}>
             <FileSpreadsheet className="h-4 w-4" />
@@ -122,9 +122,8 @@ export default function DocumentosPage() {
           <div>
             <p className="font-medium">Modo simulación</p>
             <p className="text-xs">
-              No hay token de FactPro configurado. Los comprobantes se generan con la estructura
-              real pero <strong>no se envían a SUNAT ni tienen validez tributaria</strong>. Configura{" "}
-              <code className="rounded bg-black/10 px-1">FACTPRO_TOKEN</code> para emitir de verdad.
+              La facturación electrónica no está configurada. Los comprobantes se generan con la
+              estructura real pero <strong>no se envían a SUNAT ni tienen validez tributaria</strong>.
             </p>
           </div>
         </div>

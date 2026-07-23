@@ -119,7 +119,7 @@ export function Sidebar({
       {/* `min-h-0` es lo que permite que el nav se encoja por debajo de su
           contenido: sin él, con 13 ítems el panel crece y se sale de pantalla
           en vez de desplazarse por dentro. */}
-      <nav className="min-h-0 flex-1 space-y-0.5 overflow-y-auto px-2 pb-2">
+      <nav className="scrollbar-none min-h-0 flex-1 space-y-0.5 overflow-y-auto px-2 pb-2">
         {items.map(({ to, label, corto, icon: Icon, soon }) => (
           <NavLink
             key={to}

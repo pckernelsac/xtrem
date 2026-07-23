@@ -148,4 +148,15 @@
   .tabular {
     font-variant-numeric: tabular-nums;
   }
+
+  /* Oculta la barra de scroll del sistema (fea sobre la sidebar oscura)
+     manteniendo el desplazamiento con rueda/trackpad. */
+  .scrollbar-none {
+    scrollbar-width: none; /* Firefox */
+    -ms-overflow-style: none; /* Edge/IE */
+  }
+  .scrollbar-none::-webkit-scrollbar {
+    width: 0;
+    height: 0;
+  }
 }

@@ -197,6 +197,18 @@
   .pie .sep { width: .8pt; height: 8.5mm; background: #666; flex: 0 0 auto; }
   .pie .dato { line-height: 1.75; padding: 0 5mm; flex: 0 0 auto; }
   .pie .dato b { font-weight: normal; }
+
+  /* ---------- QR de consulta ---------- */
+  .consulta {
+    display: flex; align-items: center; justify-content: flex-end;
+    gap: 3mm; margin-top: 2.4mm;
+  }
+  .consulta .qr { width: 20mm; height: 20mm; }
+  .consulta .txt { text-align: right; font-size: 7.2pt; line-height: 1.5; }
+  .consulta .txt b { display: block; font-size: 7.6pt; }
+  .consulta .txt .cod {
+    font-weight: bold; letter-spacing: .3pt; color: #e2201f;
+  }
 </style>
 </head>
 <body>
@@ -420,6 +432,18 @@
       </div>
     </div>
   </div>
+
+  {% if qr %}
+  <!-- ===================== QR DE CONSULTA ===================== -->
+  <div class="consulta">
+    <div class="txt">
+      <b>Consulta tu ficha en línea</b>
+      Escanea el código con tu celular
+      {% if codigo_publico %}<div class="cod">Código: {{ codigo_publico }}</div>{% endif %}
+    </div>
+    <img class="qr" src="{{ qr }}" alt="">
+  </div>
+  {% endif %}
 
   <!-- ===================== PIE ===================== -->
   <div class="pie">

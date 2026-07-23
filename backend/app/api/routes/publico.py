@@ -10,6 +10,7 @@ from fastapi.responses import HTMLResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.db.session import get_db
 from app.models.ficha import Ficha
 from app.services.consulta_publica import datos_consulta
@@ -51,8 +52,9 @@ def consulta_publica(
     ficha = _buscar_ficha(db, codigo)
 
     if formato == "pdf":
+        url_qr = f"{settings.PUBLIC_BASE_URL}/f/{ficha.codigo_publico}"
         return Response(
-            content=render_ficha_pdf(ficha),
+            content=render_ficha_pdf(ficha, url_publica=url_qr),
             media_type="application/pdf",
             headers={"Content-Disposition": f'inline; filename="ficha-{ficha.numero}.pdf"'},
         )

@@ -162,10 +162,13 @@ def _firma_utilizable(data_url: str | None) -> str | None:
     return data_url
 
 
-def render_ficha_pdf(ficha: Ficha) -> bytes:
+def render_ficha_pdf(ficha: Ficha, url_publica: str | None = None) -> bytes:
     contexto = _contexto(ficha)
     contexto["firma_cliente"] = _firma_utilizable(ficha.firma_cliente)
     contexto["firma_tecnico"] = _firma_utilizable(ficha.firma_tecnico)
+    contexto["qr"] = _qr_data_url(url_publica) if url_publica else None
+    # Se imprime junto al QR por si la cámara no lo lee: el cliente lo dicta.
+    contexto["codigo_publico"] = ficha.codigo_publico if url_publica else None
 
     html = _env().get_template("ficha.html").render(**contexto)
     return HTML(string=html, base_url=str(BASE_DIR)).write_pdf()

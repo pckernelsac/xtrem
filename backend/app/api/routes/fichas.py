@@ -415,7 +415,7 @@ def descargar_pdf(
     inline: bool = Query(default=True, description="true abre en el visor, false descarga"),
 ) -> Response:
     ficha = _autorizar_impresion(ficha_id, db, credentials, token)
-    pdf = render_ficha_pdf(ficha)
+    pdf = render_ficha_pdf(ficha, url_publica=_url_qr(ficha))
 
     disposition = "inline" if inline else "attachment"
     return Response(

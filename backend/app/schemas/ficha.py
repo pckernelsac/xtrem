@@ -217,7 +217,6 @@ class CompartirOut(BaseModel):
     """Enlaces para entregar la ficha al cliente."""
 
     url_pdf: str
-    expira_en: datetime
     #: Teléfono normalizado a formato internacional, o None si no era usable.
     telefono: str | None
     whatsapp_url: str

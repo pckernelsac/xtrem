@@ -133,7 +133,6 @@ export type Conteos = {
 
 export type Compartir = {
   url_pdf: string
-  expira_en: string
   telefono: string | null
   whatsapp_url: string
   mensaje: string

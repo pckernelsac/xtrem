@@ -102,13 +102,7 @@ export function CompartirModal({
           </div>
 
           <p className="mt-2 text-xs text-muted-foreground">
-            El enlace vence el{" "}
-            {new Date(datos.expira_en).toLocaleDateString("es-PE", {
-              day: "2-digit",
-              month: "long",
-              year: "numeric",
-            })}
-            . El cliente no necesita cuenta para abrirlo.
+            Enlace corto y permanente. El cliente no necesita cuenta para abrirlo.
           </p>
 
           <div className="mt-4 flex justify-end gap-2">

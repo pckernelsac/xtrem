@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import bearer_scheme, get_current_user, require_permission
 from app.core.config import settings
-from app.core.security import create_print_token, decode_token
+from app.core.security import decode_token
 from app.db.session import get_db
 from app.models.bicicleta import Bicicleta
 from app.models.cliente import Cliente
@@ -46,15 +46,8 @@ def _siguiente_numero(db: Session) -> str:
     return f"{valor:06d}"
 
 
-def _url_publica(ficha: Ficha, con_expiracion: bool = False):
-    """URL del PDF firmada con JWT, abrible sin sesión. Para WhatsApp."""
-    token, expira = create_print_token(str(ficha.id))
-    url = f"{settings.PUBLIC_BASE_URL}{settings.API_V1_PREFIX}/fichas/{ficha.id}/pdf?t={token}"
-    return (url, expira) if con_expiracion else url
-
-
 def _url_qr(ficha: Ficha) -> str:
-    """URL corta para el QR del ticket.
+    """URL corta para el QR del ticket y el enlace de WhatsApp.
 
     Va por el código corto y no por el JWT: el token deja un QR de versión 14
     (~0.34 mm por módulo en 26 mm), justo en el límite de una térmica de
@@ -461,13 +454,14 @@ def compartir(
     """Genera el enlace público de la ficha y el enlace de WhatsApp al cliente."""
     ficha = _get_ficha(db, ficha_id)
 
-    url, expira = _url_publica(ficha, con_expiracion=True)
+    # Enlace corto por código público (/f/{codigo}), igual que el de las boletas
+    # electrónicas: no vence y no expone un token largo en el chat del cliente.
+    url = _url_qr(ficha)
     destino = telefono or ficha.cliente.telefono
     mensaje = mensaje_ficha(ficha, url)
 
     return CompartirOut(
         url_pdf=url,
-        expira_en=expira,
         telefono=normalizar_telefono(destino),
         whatsapp_url=enlace_whatsapp(destino, mensaje),
         mensaje=mensaje,

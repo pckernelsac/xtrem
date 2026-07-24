@@ -36,6 +36,11 @@ def get_current_user(
     user = db.get(User, user_id)
     if user is None:
         raise CREDENTIALS_ERROR
+    # Un token emitido antes de un cambio de contraseña queda invalidado: su `tv`
+    # ya no coincide con el del usuario. Los tokens previos a esta función no
+    # traen `tv` y valen como 0, igual que el token_version inicial.
+    if payload.get("tv", 0) != user.token_version:
+        raise CREDENTIALS_ERROR
     if not user.is_active:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="El usuario está desactivado"

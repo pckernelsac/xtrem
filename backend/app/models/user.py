@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, String
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, TimestampMixin, UUIDMixin
@@ -18,6 +18,11 @@ class User(UUIDMixin, TimestampMixin, Base):
     hashed_password: Mapped[str] = mapped_column(String(255))
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    #: Se incrementa al cambiar la contraseña. Los tokens llevan el valor con que
+    #: se emitieron; si no coincide con éste, se rechazan. Así un cambio de clave
+    #: cierra las sesiones abiertas con la contraseña anterior.
+    token_version: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 
     role_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("roles.id", ondelete="RESTRICT"))
     role: Mapped[Role] = relationship(back_populates="users", lazy="selectin")

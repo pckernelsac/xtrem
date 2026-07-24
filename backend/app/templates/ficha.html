@@ -401,8 +401,8 @@
         <span class="ico">{{ ico.icono("portapapeles") }}</span>
         <span class="txt">OBSERVACIONES</span>
       </div>
-      {% if f.observaciones or f.garantia_dias %}
-        <div class="texto-libre">{{ f.observaciones or "" }}</div>
+      {% if (f.observaciones and not publico) or f.garantia_dias %}
+        {% if not publico %}<div class="texto-libre">{{ f.observaciones or "" }}</div>{% endif %}
         {% if f.garantia_dias %}<div class="meta"><b>GARANTÍA:</b> {{ f.garantia_dias }} días</div>{% endif %}
       {% else %}
         <div class="renglones">

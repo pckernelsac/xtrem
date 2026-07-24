@@ -24,8 +24,8 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 def _tokens_for(user: User) -> TokenPair:
     return TokenPair(
-        access_token=create_access_token(str(user.id)),
-        refresh_token=create_refresh_token(str(user.id)),
+        access_token=create_access_token(str(user.id), user.token_version),
+        refresh_token=create_refresh_token(str(user.id), user.token_version),
     )
 
 
@@ -83,7 +83,11 @@ def refresh(data: RefreshRequest, db: Session = Depends(get_db)) -> TokenPair:
         user = db.get(User, uuid.UUID(payload["sub"]))
     except (KeyError, ValueError):
         user = None
-    if user is None or not user.is_active:
+    if (
+        user is None
+        or not user.is_active
+        or payload.get("tv", 0) != user.token_version
+    ):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Refresh token inválido o expirado"
         )
@@ -106,4 +110,6 @@ def change_password(
             status_code=status.HTTP_400_BAD_REQUEST, detail="La contraseña actual no es correcta"
         )
     user.hashed_password = hash_password(data.new_password)
+    # Invalida las sesiones abiertas con la contraseña anterior.
+    user.token_version += 1
     db.commit()

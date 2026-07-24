@@ -175,10 +175,10 @@
   </div>
   {% endif %}
 
-  {% if f.observaciones or f.garantia_dias %}
+  {% if (f.observaciones and not publico) or f.garantia_dias %}
   <div class="bloque">
     <div class="titulo">Observaciones</div>
-    {% if f.observaciones %}<div class="parrafo">{{ f.observaciones }}</div>{% endif %}
+    {% if f.observaciones and not publico %}<div class="parrafo">{{ f.observaciones }}</div>{% endif %}
     {% if f.garantia_dias %}<div class="neg chico">Garantía: {{ f.garantia_dias }} días</div>{% endif %}
   </div>
   {% endif %}

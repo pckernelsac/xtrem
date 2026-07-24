@@ -20,26 +20,37 @@ def verify_password(plain: str, hashed: str) -> bool:
     return pwd_context.verify(plain, hashed)
 
 
-def _create_token(subject: str, token_type: TokenType, expires_delta: timedelta) -> str:
+def _create_token(
+    subject: str,
+    token_type: TokenType,
+    expires_delta: timedelta,
+    token_version: int | None = None,
+) -> str:
     now = datetime.now(UTC)
-    payload = {
+    payload: dict[str, Any] = {
         "sub": subject,
         "type": token_type,
         "iat": now,
         "exp": now + expires_delta,
         "jti": str(uuid.uuid4()),
     }
+    # Sólo los tokens de sesión llevan la versión: el de impresión no depende de
+    # la contraseña del usuario.
+    if token_version is not None:
+        payload["tv"] = token_version
     return jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
 
 
-def create_access_token(subject: str) -> str:
+def create_access_token(subject: str, token_version: int = 0) -> str:
     return _create_token(
-        subject, "access", timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+        subject, "access", timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES), token_version
     )
 
 
-def create_refresh_token(subject: str) -> str:
-    return _create_token(subject, "refresh", timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS))
+def create_refresh_token(subject: str, token_version: int = 0) -> str:
+    return _create_token(
+        subject, "refresh", timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS), token_version
+    )
 
 
 def create_print_token(ficha_id: str) -> tuple[str, datetime]:

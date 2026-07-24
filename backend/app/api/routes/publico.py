@@ -54,13 +54,13 @@ def consulta_publica(
     if formato == "pdf":
         url_qr = f"{settings.PUBLIC_BASE_URL}/f/{ficha.codigo_publico}"
         return Response(
-            content=render_ficha_pdf(ficha, url_publica=url_qr),
+            content=render_ficha_pdf(ficha, url_publica=url_qr, publico=True),
             media_type="application/pdf",
             headers={"Content-Disposition": f'inline; filename="ficha-{ficha.numero}.pdf"'},
         )
     if formato == "ticket":
         return Response(
-            content=render_ficha_ticket(ficha),
+            content=render_ficha_ticket(ficha, publico=True),
             media_type="application/pdf",
             headers={"Content-Disposition": f'inline; filename="ticket-{ficha.numero}.pdf"'},
         )

@@ -361,6 +361,17 @@ def update_ficha(
     if repuestos is not None:
         _reemplazar_repuestos(db, ficha, [RepuestoIn(**r) for r in repuestos], actor.id)
 
+    # El adelanto ya se cobró en caja: dejar el total por debajo de él daría un
+    # saldo negativo imposible de facturar y sin vía de devolución.
+    if ficha.adelanto and ficha.adelanto > ficha.total:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                f"El total quedaría en S/ {ficha.total:.2f}, por debajo del adelanto ya "
+                f"cobrado (S/ {ficha.adelanto:.2f}). Ajusta el adelanto o los importes."
+            ),
+        )
+
     db.commit()
     db.refresh(ficha)
     return ficha

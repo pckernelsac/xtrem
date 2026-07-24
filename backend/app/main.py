@@ -39,6 +39,10 @@ TAGS = [
     {"name": "infra", "description": "Health checks."},
 ]
 
+# La documentación interactiva expone el mapa completo de la API; se sirve sólo
+# en desarrollo. En producción los tres endpoints quedan apagados (404).
+_docs_habilitados = settings.es_desarrollo
+
 app = FastAPI(
     title=settings.PROJECT_NAME,
     version="1.0.0",
@@ -46,9 +50,9 @@ app = FastAPI(
     summary="ERP para taller y tienda de bicicletas con facturación SUNAT.",
     openapi_tags=TAGS,
     contact={"name": "Zona Xtrema Bikes & Componentes", "url": "https://www.zonaxtrema.pe"},
-    openapi_url=f"{settings.API_V1_PREFIX}/openapi.json",
-    docs_url="/docs",
-    redoc_url="/redoc",
+    openapi_url=f"{settings.API_V1_PREFIX}/openapi.json" if _docs_habilitados else None,
+    docs_url="/docs" if _docs_habilitados else None,
+    redoc_url="/redoc" if _docs_habilitados else None,
 )
 
 # El middleware de auditoría se registra antes que CORS para que mida el tiempo

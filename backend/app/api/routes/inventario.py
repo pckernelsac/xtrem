@@ -35,6 +35,7 @@ from app.schemas.inventario import (
 )
 from app.services.inventario import recalcular_stock, registrar_movimiento
 from app.services.inventario_excel import importar_productos, plantilla_xlsx
+from app.services.producto_foto import MAX_BYTES as MAX_FOTO_BYTES
 from app.services.producto_foto import MIME_SALIDA, normalizar
 
 router = APIRouter(prefix="/inventario", tags=["inventario"])
@@ -370,6 +371,14 @@ async def subir_foto(
     if producto is None:
         raise HTTPException(status_code=404, detail="Producto no encontrado")
 
+    # Rechazar por tamaño ANTES de cargar el cuerpo en memoria: `archivo.size`
+    # lo trae el parser sin leer los bytes.
+    if archivo.size is not None and archivo.size > MAX_FOTO_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=f"La imagen supera los {MAX_FOTO_BYTES // (1024 * 1024)} MB",
+        )
+
     contenido = normalizar(await archivo.read())
 
     foto = db.scalar(select(ProductoFoto).where(ProductoFoto.producto_id == producto_id))
@@ -612,6 +621,13 @@ async def importar_excel(
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="El archivo debe ser .xlsx (Excel). Los .xls antiguos no son compatibles.",
+        )
+
+    # Rechazar por tamaño antes de leer el cuerpo entero en memoria.
+    if archivo.size is not None and archivo.size > MAX_EXCEL_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail="El archivo supera los 5 MB",
         )
 
     contenido = await archivo.read()

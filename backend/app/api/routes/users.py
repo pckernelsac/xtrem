@@ -149,6 +149,8 @@ def update_user(
         user.is_active = data.is_active
     if data.password:
         user.hashed_password = hash_password(data.password)
+        # Cerrar las sesiones abiertas con la contraseña anterior (reseteo de admin).
+        user.token_version += 1
 
     db.commit()
     db.refresh(user)

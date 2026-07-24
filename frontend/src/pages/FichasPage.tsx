@@ -87,14 +87,14 @@ export default function FichasPage() {
   return (
     <div>
       <PageHeader
-        title="Fichas de mantenimiento"
+        title="Servicios"
         description="Órdenes de trabajo del taller, desde la recepción hasta la entrega."
         actions={
           canCreate && (
             <Link to="/fichas/nueva">
               <Button>
                 <Plus className="h-4 w-4" />
-                Nueva ficha
+                Nuevo servicio
               </Button>
             </Link>
           )
@@ -129,7 +129,7 @@ export default function FichasPage() {
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="N° de ficha, cliente o bicicleta..."
+            placeholder="N° de servicio, cliente o bicicleta..."
             className="w-72 rounded-md border border-border bg-background py-1.5 pl-8 pr-3 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
           />
         </div>
@@ -138,7 +138,7 @@ export default function FichasPage() {
       {isLoading ? (
         <SkeletonTable
           rows={8}
-          headers={["N° Ficha", "Cliente", "Bicicleta", "Recepción", "Total", "Estado", ""]}
+          headers={["N° Servicio", "Cliente", "Bicicleta", "Recepción", "Total", "Estado", ""]}
           columns={["w-20", "w-40", "w-36", "w-24", "w-20", "w-28", "w-10"]}
         />
       ) : (
@@ -147,11 +147,11 @@ export default function FichasPage() {
             <table className="w-full text-sm">
               <thead className="bg-secondary">
                 <tr className="text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  <th className="px-4 py-2.5">N° Ficha</th>
+                  <th className="px-4 py-2.5">N° Servicio</th>
                   <th className="px-4 py-2.5">Cliente</th>
                   <th className="px-4 py-2.5">Bicicleta</th>
                   <th className="px-4 py-2.5">Recepción</th>
-                  <th className="px-4 py-2.5 text-right">Repuestos</th>
+                  <th className="px-4 py-2.5 text-right">Total</th>
                   <th className="px-4 py-2.5">Estado</th>
                   <th className="px-4 py-2.5" />
                 </tr>
@@ -184,22 +184,28 @@ export default function FichasPage() {
                       </div>
                     </td>
                     <td className="px-4 py-2.5">
-                      <Link
-                        to={`/bicicletas/${f.bicicleta.id}`}
-                        className="hover:text-primary hover:underline"
-                      >
-                        {[f.bicicleta.marca, f.bicicleta.modelo].filter(Boolean).join(" ")}
-                      </Link>
-                      {f.bicicleta.numero_serie && (
-                        <div className="tabular text-xs text-muted-foreground">
-                          {f.bicicleta.numero_serie}
-                        </div>
+                      {f.bicicleta ? (
+                        <>
+                          <Link
+                            to={`/bicicletas/${f.bicicleta.id}`}
+                            className="hover:text-primary hover:underline"
+                          >
+                            {[f.bicicleta.marca, f.bicicleta.modelo].filter(Boolean).join(" ")}
+                          </Link>
+                          {f.bicicleta.numero_serie && (
+                            <div className="tabular text-xs text-muted-foreground">
+                              {f.bicicleta.numero_serie}
+                            </div>
+                          )}
+                        </>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
                       )}
                     </td>
                     <td className="tabular px-4 py-2.5 text-muted-foreground">
                       {fmtFecha(f.fecha_recepcion)}
                     </td>
-                    <td className="tabular px-4 py-2.5 text-right">{soles(f.total_repuestos)}</td>
+                    <td className="tabular px-4 py-2.5 text-right">{soles(f.total)}</td>
                     <td className="px-4 py-2.5">
                       <div className="flex items-center gap-1.5">
                         <Badge tone={ESTADO_INFO[f.estado].tone}>
@@ -216,7 +222,7 @@ export default function FichasPage() {
                       <div className="flex justify-end gap-1">
                         <Link
                           to={`/fichas/${f.id}`}
-                          title="Abrir la ficha"
+                          title="Abrir el servicio"
                           className="inline-flex rounded p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground"
                         >
                           <FileText className="h-3.5 w-3.5" />
@@ -235,7 +241,7 @@ export default function FichasPage() {
                                 ? "Restaurar al tablero"
                                 : "Archivar: sale del tablero, el historial de la bici no cambia"
                             }
-                            aria-label={`${f.archivada ? "Restaurar" : "Archivar"} ficha ${f.numero}`}
+                            aria-label={`${f.archivada ? "Restaurar" : "Archivar"} servicio ${f.numero}`}
                           >
                             {f.archivada ? (
                               <ArchiveRestore className="h-3.5 w-3.5" />
@@ -254,8 +260,8 @@ export default function FichasPage() {
                       {debounced
                         ? `Sin resultados para "${debounced}".`
                         : tab === "ARCHIVADAS"
-                          ? "No hay fichas archivadas."
-                          : "Aún no hay fichas registradas."}
+                          ? "No hay servicios archivados."
+                          : "Aún no hay servicios registrados."}
                     </td>
                   </tr>
                 )}
@@ -268,7 +274,7 @@ export default function FichasPage() {
             pageSize={PAGE_SIZE}
             total={total}
             onChange={setPage}
-            etiqueta="fichas"
+            etiqueta="servicios"
           />
         </div>
       )}

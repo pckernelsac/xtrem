@@ -17,6 +17,7 @@ import {
   type FichaDetail,
   type ServicioCodigo,
 } from "@/features/fichas/types"
+import { METODOS, type MetodoPago } from "@/features/ventas/types"
 
 type FilaRepuesto = {
   cantidad: string
@@ -62,6 +63,9 @@ export default function FichaFormPage() {
   const [tiempo, setTiempo] = useState("")
   const [observaciones, setObservaciones] = useState("")
   const [garantia, setGarantia] = useState("")
+  const [costoServicio, setCostoServicio] = useState("")
+  const [adelanto, setAdelanto] = useState("")
+  const [adelantoMetodo, setAdelantoMetodo] = useState<MetodoPago>("EFECTIVO")
   const [filas, setFilas] = useState<FilaRepuesto[]>([{ ...FILA_VACIA }])
 
   const fichaQ = useQuery({
@@ -107,7 +111,7 @@ export default function FichaFormPage() {
     const f = fichaQ.data
     if (!f) return
     setClienteId(f.cliente.id)
-    setBicicletaId(f.bicicleta.id)
+    setBicicletaId(f.bicicleta?.id ?? "")
     setCanal(f.canal_referencia ?? "")
     setServicios(new Set(f.servicios))
     setServicioOtro(f.servicio_otro ?? "")
@@ -116,6 +120,8 @@ export default function FichaFormPage() {
     setTiempo(f.tiempo_invertido_min?.toString() ?? "")
     setObservaciones(f.observaciones ?? "")
     setGarantia(f.garantia_dias?.toString() ?? "")
+    setCostoServicio(Number(f.costo_servicio) ? String(Number(f.costo_servicio)) : "")
+    setAdelanto(Number(f.adelanto) ? String(Number(f.adelanto)) : "")
     setFilas(
       f.repuestos.length
         ? f.repuestos.map((r) => ({
@@ -129,7 +135,7 @@ export default function FichaFormPage() {
     )
   }, [fichaQ.data])
 
-  const total = useMemo(
+  const totalRepuestos = useMemo(
     () =>
       filas.reduce(
         (acc, f) => acc + (Number(f.cantidad) || 0) * (Number(f.precio_unitario) || 0),
@@ -137,6 +143,9 @@ export default function FichaFormPage() {
       ),
     [filas],
   )
+  const manoObra = Number(costoServicio) || 0
+  const total = totalRepuestos + manoObra
+  const saldo = total - (Number(adelanto) || 0)
 
   const toggleServicio = (code: ServicioCodigo) => {
     setServicios((prev) => {
@@ -186,6 +195,7 @@ export default function FichaFormPage() {
         canal_referencia: canal.trim() || null,
         servicios: [...servicios],
         servicio_otro: servicioOtro.trim() || null,
+        costo_servicio: Number(costoServicio) || 0,
         diagnostico_inicial: diagnostico.trim() || null,
         trabajo_realizado: trabajo.trim() || null,
         tiempo_invertido_min: tiempo ? Number(tiempo) : null,
@@ -210,7 +220,9 @@ export default function FichaFormPage() {
       const { data } = await api.post<FichaDetail>(`${API_PREFIX}/fichas`, {
         ...payload,
         cliente_id: clienteId,
-        bicicleta_id: bicicletaId,
+        bicicleta_id: bicicletaId || null,
+        adelanto: Number(adelanto) || 0,
+        adelanto_metodo: Number(adelanto) > 0 ? adelantoMetodo : null,
       })
       return data.id
     },
@@ -241,7 +253,7 @@ export default function FichaFormPage() {
       </button>
 
       <PageHeader
-        title={editando ? `Editar ficha N° ${fichaQ.data?.numero}` : "Nueva ficha de mantenimiento"}
+        title={editando ? `Editar servicio N° ${fichaQ.data?.numero}` : "Nuevo servicio"}
         description="Los campos coinciden con la ficha impresa del taller."
       />
 
@@ -253,7 +265,7 @@ export default function FichaFormPage() {
         className="space-y-4"
       >
         <Seccion titulo="Cliente y bicicleta">
-          {/* Al recibir la bici, lo primero que se pide es el documento del
+          {/* Al recibir el servicio, lo primero que se pide es el documento del
               dueño: se busca o se registra sin salir de la ficha. */}
           {!editando && (
             <Field
@@ -293,22 +305,20 @@ export default function FichaFormPage() {
             </Field>
 
             <Field
-              label="Bicicleta"
-              required
+              label="Bicicleta (opcional)"
               hint={
                 clienteId && bicisQ.data?.items.length === 0
                   ? "Este cliente no tiene bicicletas activas registradas."
-                  : undefined
+                  : "Déjalo en blanco si el servicio no involucra una bicicleta."
               }
             >
               <Select
-                required
                 value={bicicletaId}
                 disabled={editando || !clienteId}
                 onChange={(e) => setBicicletaId(e.target.value)}
               >
                 <option value="">
-                  {clienteId ? "Selecciona una bicicleta" : "Elige primero el cliente"}
+                  {clienteId ? "Sin bicicleta / no aplica" : "Elige primero el cliente"}
                 </option>
                 {(bicisQ.data?.items ?? []).map((b) => (
                   <option key={b.id} value={b.id}>
@@ -490,9 +500,72 @@ export default function FichaFormPage() {
               Agregar fila
             </Button>
             <div className="text-sm">
-              <span className="text-muted-foreground">Total</span>{" "}
+              <span className="text-muted-foreground">Subtotal repuestos</span>{" "}
+              <span className="tabular text-lg font-semibold">{soles(totalRepuestos)}</span>
+            </div>
+          </div>
+        </Seccion>
+
+        <Seccion titulo="Cobro">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field
+              label="Costo de servicio / mano de obra"
+              hint="Aparte de los repuestos. Puede ser el único cobro de un servicio sin piezas."
+            >
+              <Input
+                type="number"
+                min="0"
+                step="0.01"
+                value={costoServicio}
+                onChange={(e) => setCostoServicio(e.target.value)}
+                placeholder="0.00"
+              />
+            </Field>
+
+            {!editando ? (
+              <Field label="Adelanto cobrado al recibir" hint="Entra a caja al crear el servicio.">
+                <div className="flex gap-2">
+                  <Input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={adelanto}
+                    onChange={(e) => setAdelanto(e.target.value)}
+                    placeholder="0.00"
+                    className="flex-1"
+                  />
+                  <Select
+                    value={adelantoMetodo}
+                    onChange={(e) => setAdelantoMetodo(e.target.value as MetodoPago)}
+                    disabled={!(Number(adelanto) > 0)}
+                    className="w-36"
+                  >
+                    {METODOS.map((m) => (
+                      <option key={m.value} value={m.value}>
+                        {m.label}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+              </Field>
+            ) : (
+              <Field label="Adelanto cobrado al recibir">
+                <Input value={soles(adelanto || 0)} disabled readOnly />
+              </Field>
+            )}
+          </div>
+
+          <div className="mt-4 flex flex-wrap justify-end gap-x-8 gap-y-2 border-t border-border pt-4 text-sm">
+            <div>
+              <span className="text-muted-foreground">Total del servicio</span>{" "}
               <span className="tabular text-lg font-semibold">{soles(total)}</span>
             </div>
+            {Number(adelanto) > 0 && (
+              <div>
+                <span className="text-muted-foreground">Saldo restante</span>{" "}
+                <span className="tabular text-lg font-semibold">{soles(saldo)}</span>
+              </div>
+            )}
           </div>
         </Seccion>
 

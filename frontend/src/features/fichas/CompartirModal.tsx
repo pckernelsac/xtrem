@@ -52,8 +52,8 @@ export function CompartirModal({
     <Modal
       open={open}
       onClose={onClose}
-      title="Enviar ficha al cliente"
-      description={`Ficha N° ${numero}`}
+      title="Enviar servicio al cliente"
+      description={`Servicio N° ${numero}`}
     >
       <Field
         label="Teléfono de WhatsApp"

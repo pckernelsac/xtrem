@@ -8,6 +8,8 @@ from PIL import Image
 from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator
 
 from app.models.bicicleta import TipoBicicleta
+from app.models.caja import MetodoPago
+from app.models.comprobante import EstadoComprobante, TipoComprobante
 from app.models.ficha import EstadoFicha, ServicioSolicitado
 
 PREFIJO_PNG = "data:image/png;base64,"
@@ -76,6 +78,9 @@ class FichaBase(BaseModel):
     canal_referencia: str | None = Field(default=None, max_length=120)
     servicios: list[ServicioSolicitado] = Field(default_factory=list)
     servicio_otro: str | None = Field(default=None, max_length=200)
+    costo_servicio: Decimal = Field(
+        default=Decimal("0.00"), ge=0, max_digits=10, decimal_places=2
+    )
     diagnostico_inicial: str | None = None
     trabajo_realizado: str | None = None
     tiempo_invertido_min: int | None = Field(default=None, ge=0, le=100_000)
@@ -95,16 +100,21 @@ class FichaBase(BaseModel):
 
 class FichaCreate(FichaBase):
     cliente_id: uuid.UUID
-    bicicleta_id: uuid.UUID
+    #: Opcional: un servicio de sólo mano de obra no lleva bicicleta.
+    bicicleta_id: uuid.UUID | None = None
     fecha_recepcion: datetime | None = None
     tecnico_recepcion_id: uuid.UUID | None = None
     tecnico_responsable_id: uuid.UUID | None = None
+    #: Anticipo cobrado al recibir. Entra a caja al crear y no se edita después.
+    adelanto: Decimal = Field(default=Decimal("0.00"), ge=0, max_digits=10, decimal_places=2)
+    adelanto_metodo: MetodoPago | None = None
     repuestos: list[RepuestoIn] = Field(default_factory=list)
 
 
 class FichaUpdate(FichaBase):
     canal_referencia: str | None = None
     servicios: list[ServicioSolicitado] | None = None  # type: ignore[assignment]
+    costo_servicio: Decimal | None = None  # type: ignore[assignment]
     fecha_recepcion: datetime | None = None
     tecnico_recepcion_id: uuid.UUID | None = None
     tecnico_responsable_id: uuid.UUID | None = None
@@ -168,15 +178,31 @@ class FichaOut(BaseModel):
     numero: str
     estado: EstadoFicha
     cliente: ClienteFicha
-    bicicleta: BicicletaFicha
+    bicicleta: BicicletaFicha | None
     fecha_recepcion: datetime
     fecha_entrega: datetime | None
     tecnico_recepcion: UsuarioFicha | None
     tecnico_responsable: UsuarioFicha | None
     total_repuestos: Decimal
+    costo_servicio: Decimal
+    total: Decimal
+    adelanto: Decimal
+    saldo: Decimal
     esta_firmada: bool
     archivada: bool = False
     created_at: datetime
+
+
+class FacturacionFichaOut(BaseModel):
+    """Resumen del comprobante al que derivó el servicio, si ya se facturó."""
+
+    venta_numero: str
+    comprobante_id: uuid.UUID
+    tipo: TipoComprobante
+    numero: str
+    estado: EstadoComprobante
+    es_simulado: bool
+    pdf_url: str | None
 
 
 class FichaDetail(FichaOut):
@@ -189,6 +215,7 @@ class FichaDetail(FichaOut):
     tiempo_invertido_min: int | None
     observaciones: str | None
     garantia_dias: int | None
+    adelanto_metodo: MetodoPago | None
     tecnico_entrega: UsuarioFicha | None
     firma_cliente: str | None
     firma_cliente_dni: str | None
@@ -197,6 +224,8 @@ class FichaDetail(FichaOut):
     fecha_firma: datetime | None
     repuestos: list[RepuestoOut]
     historial_estados: list[EstadoLogOut]
+    #: Lo rellena el endpoint de detalle; no es una columna de la ficha.
+    facturacion: FacturacionFichaOut | None = None
 
     @computed_field  # type: ignore[prop-decorator]
     @property
@@ -211,6 +240,20 @@ class FichaPage(BaseModel):
     total: int
     page: int
     page_size: int
+
+
+class PagoServicioIn(BaseModel):
+    """Un cobro del saldo al convertir el servicio en comprobante."""
+
+    metodo: MetodoPago
+    monto: Decimal = Field(gt=0, max_digits=10, decimal_places=2)
+    referencia: str | None = Field(default=None, max_length=80)
+
+
+class FacturarFichaIn(BaseModel):
+    #: Pagos que cubren el saldo pendiente del servicio. El adelanto ya
+    #: registrado en recepción no se repite aquí.
+    pagos: list[PagoServicioIn] = Field(default_factory=list)
 
 
 class CompartirOut(BaseModel):

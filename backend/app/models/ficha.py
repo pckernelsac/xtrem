@@ -19,6 +19,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, TimestampMixin, UUIDMixin
+from app.models.caja import MetodoPago
 
 
 #: Alfabeto sin caracteres que se confunden al dictarlos o leerlos impresos
@@ -106,11 +107,12 @@ class Ficha(UUIDMixin, TimestampMixin, Base):
     cliente_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("clientes.id", ondelete="RESTRICT"), nullable=False
     )
-    bicicleta_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("bicicletas.id", ondelete="RESTRICT"), nullable=False
+    #: Opcional: un servicio puede ser sólo mano de obra, sin bicicleta asociada.
+    bicicleta_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("bicicletas.id", ondelete="RESTRICT")
     )
     cliente: Mapped["Cliente"] = relationship(lazy="joined")  # noqa: F821
-    bicicleta: Mapped["Bicicleta"] = relationship(lazy="joined")  # noqa: F821
+    bicicleta: Mapped["Bicicleta | None"] = relationship(lazy="joined")  # noqa: F821
 
     estado: Mapped[EstadoFicha] = mapped_column(
         Enum(EstadoFicha, name="estado_ficha"), default=EstadoFicha.RECIBIDA, nullable=False
@@ -129,6 +131,20 @@ class Ficha(UUIDMixin, TimestampMixin, Base):
     # --- Servicio solicitado ---
     servicios: Mapped[list[str]] = mapped_column(JSONB, default=list, nullable=False)
     servicio_otro: Mapped[str | None] = mapped_column(String(200))
+
+    # --- Cobro ---
+    #: Mano de obra del servicio, aparte de los repuestos.
+    costo_servicio: Mapped[Decimal] = mapped_column(
+        Numeric(10, 2), default=Decimal("0.00"), nullable=False
+    )
+    #: Anticipo cobrado en recepción. Se registra en caja al crear la ficha y no
+    #: se edita después, para no descuadrar el arqueo de esa jornada.
+    adelanto: Mapped[Decimal] = mapped_column(
+        Numeric(10, 2), default=Decimal("0.00"), nullable=False
+    )
+    adelanto_metodo: Mapped["MetodoPago | None"] = mapped_column(
+        Enum(MetodoPago, name="metodo_pago")
+    )
 
     # --- Diagnóstico y trabajo ---
     diagnostico_inicial: Mapped[str | None] = mapped_column(Text)
@@ -181,6 +197,16 @@ class Ficha(UUIDMixin, TimestampMixin, Base):
     @property
     def total_repuestos(self) -> Decimal:
         return sum((r.subtotal for r in self.repuestos), Decimal("0.00"))
+
+    @property
+    def total(self) -> Decimal:
+        """Lo que cuesta el servicio: repuestos más mano de obra."""
+        return self.total_repuestos + (self.costo_servicio or Decimal("0.00"))
+
+    @property
+    def saldo(self) -> Decimal:
+        """Lo que falta cobrar tras descontar el adelanto."""
+        return self.total - (self.adelanto or Decimal("0.00"))
 
     @property
     def archivada(self) -> bool:

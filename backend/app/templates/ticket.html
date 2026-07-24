@@ -107,6 +107,7 @@
     {% endif %}
   </div>
 
+  {% if f.bicicleta %}
   <div class="bloque">
     <div class="titulo">Bicicleta</div>
     <div class="neg">{{ bici_desc }}</div>
@@ -115,6 +116,7 @@
     <div class="fila"><span class="k">N° serie</span><span class="v">{{ f.bicicleta.numero_serie }}</span></div>
     {% endif %}
   </div>
+  {% endif %}
 
   {% if servicios or f.servicio_otro %}
   <div class="bloque">
@@ -141,9 +143,10 @@
   </div>
   {% endif %}
 
-  {% if f.repuestos %}
+  {% if f.repuestos or tiene_mano_obra %}
   <div class="bloque">
-    <div class="titulo">Repuestos</div>
+    <div class="titulo">Cobro</div>
+    {% if f.repuestos %}
     <table>
       <thead>
         <tr><th class="qty">Cant</th><th>Descripción</th><th class="imp">Importe</th></tr>
@@ -159,7 +162,16 @@
       </tbody>
     </table>
     <div class="sep"></div>
+    {% endif %}
+    {% if tiene_mano_obra %}
+    <div class="fila"><span class="k">Repuestos</span><span class="v">{{ total_repuestos }}</span></div>
+    <div class="fila"><span class="k">Mano de obra</span><span class="v">{{ costo_servicio }}</span></div>
+    {% endif %}
     <div class="total"><span>TOTAL S/</span><span>{{ total }}</span></div>
+    {% if tiene_adelanto %}
+    <div class="fila"><span class="k">Adelanto</span><span class="v">{{ adelanto }}</span></div>
+    <div class="total"><span>SALDO S/</span><span>{{ saldo }}</span></div>
+    {% endif %}
   </div>
   {% endif %}
 

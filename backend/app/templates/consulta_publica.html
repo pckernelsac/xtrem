@@ -94,10 +94,12 @@
   {% endif %}
 
   <div class="card">
-    <h2>Tu bicicleta</h2>
+    <h2>{{ 'Tu bicicleta' if d.bicicleta else 'Tu servicio' }}</h2>
+    {% if d.bicicleta %}
     <div class="dato"><span class="k">Equipo</span><span class="v">{{ [d.bicicleta.marca, d.bicicleta.modelo] | select | join(' ') }}</span></div>
     {% if d.bicicleta.color %}<div class="dato"><span class="k">Color</span><span class="v">{{ d.bicicleta.color }}</span></div>{% endif %}
     <div class="dato"><span class="k">Tipo</span><span class="v">{{ d.bicicleta.tipo }}</span></div>
+    {% endif %}
     <div class="dato"><span class="k">Recepción</span><span class="v">{{ d.fecha_recepcion[:10] }}</span></div>
     {% if d.fecha_entrega %}<div class="dato"><span class="k">Entrega</span><span class="v">{{ d.fecha_entrega[:10] }}</span></div>{% endif %}
   </div>
@@ -127,6 +129,21 @@
         {% endfor %}
       </tbody>
     </table>
+  </div>
+  {% endif %}
+
+  {% if d.importes and (d.repuestos or d.importes.tiene_mano_obra) %}
+  <div class="card">
+    <h2>Importes</h2>
+    {% if d.importes.tiene_mano_obra %}
+    <div class="dato"><span class="k">Repuestos</span><span class="v">S/ {{ d.importes.total_repuestos }}</span></div>
+    <div class="dato"><span class="k">Mano de obra</span><span class="v">S/ {{ d.importes.costo_servicio }}</span></div>
+    {% endif %}
+    <div class="dato"><span class="k">Total</span><span class="v">S/ {{ d.importes.total }}</span></div>
+    {% if d.importes.tiene_adelanto %}
+    <div class="dato"><span class="k">Adelanto</span><span class="v">S/ {{ d.importes.adelanto }}</span></div>
+    <div class="dato"><span class="k">Saldo</span><span class="v">S/ {{ d.importes.saldo }}</span></div>
+    {% endif %}
   </div>
   {% endif %}
 

@@ -1,3 +1,5 @@
+import type { MetodoPago } from "@/features/ventas/types"
+
 export type EstadoFicha =
   | "RECIBIDA"
   | "EN_REVISION"
@@ -93,15 +95,29 @@ export type Ficha = {
     color: string | null
     numero_serie: string | null
     tipo: string
-  }
+  } | null
   fecha_recepcion: string
   fecha_entrega: string | null
   tecnico_recepcion: UsuarioBrief | null
   tecnico_responsable: UsuarioBrief | null
   total_repuestos: string
+  costo_servicio: string
+  total: string
+  adelanto: string
+  saldo: string
   esta_firmada: boolean
   archivada: boolean
   created_at: string
+}
+
+export type FacturacionFicha = {
+  venta_numero: string
+  comprobante_id: string
+  tipo: "BOLETA" | "FACTURA" | "NOTA_CREDITO"
+  numero: string
+  estado: string
+  es_simulado: boolean
+  pdf_url: string | null
 }
 
 export type FichaDetail = Ficha & {
@@ -115,6 +131,7 @@ export type FichaDetail = Ficha & {
   tiempo_invertido_min: number | null
   observaciones: string | null
   garantia_dias: number | null
+  adelanto_metodo: MetodoPago | null
   tecnico_entrega: UsuarioBrief | null
   firma_cliente: string | null
   firma_cliente_dni: string | null
@@ -123,6 +140,7 @@ export type FichaDetail = Ficha & {
   fecha_firma: string | null
   repuestos: Repuesto[]
   historial_estados: EstadoLog[]
+  facturacion: FacturacionFicha | null
 }
 
 export type Conteos = {

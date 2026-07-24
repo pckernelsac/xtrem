@@ -11,7 +11,9 @@ from app.core.config import settings
 from app.core.security import decode_token
 from app.db.session import get_db
 from app.models.bicicleta import Bicicleta
+from app.models.caja import MetodoPago, TipoMovimientoCaja
 from app.models.cliente import Cliente
+from app.models.comprobante import ComprobanteElectronico
 from app.models.ficha import (
     ESTADOS_FINALES,
     ETIQUETAS_ESTADO,
@@ -21,10 +23,14 @@ from app.models.ficha import (
     FichaRepuesto,
 )
 from app.models.user import User
+from app.models.venta import Venta
+from app.schemas.comprobante import ComprobanteDetail
 from app.schemas.ficha import (
     CambioEstadoIn,
     CompartirOut,
     ConteoEstados,
+    FacturacionFichaOut,
+    FacturarFichaIn,
     FichaCreate,
     FichaDetail,
     FichaOut,
@@ -33,6 +39,13 @@ from app.schemas.ficha import (
     FirmaIn,
     RepuestoIn,
 )
+from app.services.caja import (
+    exigir_sesion_abierta,
+    registrar_movimiento_caja,
+    sesion_abierta,
+)
+from app.services.facturacion import comprobante_vigente_de, emitir_desde_venta
+from app.services.ficha_facturacion import crear_venta_desde_ficha
 from app.services.ficha_inventario import devolver_todo, sincronizar_consumo, validar_productos
 from app.services.ficha_pdf import render_ficha_pdf, render_ficha_ticket
 from app.services.whatsapp import enlace_whatsapp, mensaje_ficha, normalizar_telefono
@@ -62,6 +75,30 @@ def _get_ficha(db: Session, ficha_id: uuid.UUID) -> Ficha:
     if ficha is None:
         raise HTTPException(status_code=404, detail="Ficha no encontrada")
     return ficha
+
+
+def _venta_de_ficha(db: Session, ficha_id: uuid.UUID) -> Venta | None:
+    """La venta que respalda el comprobante del servicio, si ya se convirtió."""
+    return db.scalar(select(Venta).where(Venta.ficha_id == ficha_id))
+
+
+def _resumen_facturacion(db: Session, ficha: Ficha) -> FacturacionFichaOut | None:
+    """Resumen del comprobante vigente al que derivó el servicio, si existe."""
+    venta = _venta_de_ficha(db, ficha.id)
+    if venta is None:
+        return None
+    comp = comprobante_vigente_de(db, venta.id)
+    if comp is None:
+        return None
+    return FacturacionFichaOut(
+        venta_numero=venta.numero,
+        comprobante_id=comp.id,
+        tipo=comp.tipo,
+        numero=comp.numero_completo,
+        estado=comp.estado,
+        es_simulado=comp.es_simulado,
+        pdf_url=comp.pdf_url,
+    )
 
 
 def _reemplazar_repuestos(
@@ -104,7 +141,7 @@ def conteos(
     stmt = (
         select(Ficha.estado, func.count(Ficha.id))
         .join(Cliente)
-        .join(Bicicleta)
+        .outerjoin(Bicicleta)
         .where(Ficha.archivada_at.is_(None))
     )
 
@@ -149,7 +186,7 @@ def list_fichas(
 ) -> FichaPage:
     # Lo archivado se excluye por defecto: cualquier consumidor que no sepa de
     # esta bandera sigue viendo el tablero del taller y no el archivo entero.
-    stmt = select(Ficha).join(Cliente).join(Bicicleta)
+    stmt = select(Ficha).join(Cliente).outerjoin(Bicicleta)
     stmt = stmt.where(
         Ficha.archivada_at.is_not(None) if archivadas else Ficha.archivada_at.is_(None)
     )
@@ -197,7 +234,10 @@ def get_ficha(
     db: Session = Depends(get_db),
     _: User = Depends(require_permission("fichas.ver")),
 ) -> Ficha:
-    return _get_ficha(db, ficha_id)
+    ficha = _get_ficha(db, ficha_id)
+    # Atributo transitorio que lee FichaDetail; no es una columna de la ficha.
+    ficha.facturacion = _resumen_facturacion(db, ficha)  # type: ignore[attr-defined]
+    return ficha
 
 
 @router.post("", response_model=FichaDetail, status_code=status.HTTP_201_CREATED)
@@ -210,22 +250,26 @@ def create_ficha(
     if cliente is None:
         raise HTTPException(status_code=422, detail="El cliente indicado no existe")
 
-    bici = db.get(Bicicleta, data.bicicleta_id)
-    if bici is None:
-        raise HTTPException(status_code=422, detail="La bicicleta indicada no existe")
+    # La bicicleta es opcional: un servicio puede ser sólo mano de obra.
+    bici_id: uuid.UUID | None = None
+    if data.bicicleta_id is not None:
+        bici = db.get(Bicicleta, data.bicicleta_id)
+        if bici is None:
+            raise HTTPException(status_code=422, detail="La bicicleta indicada no existe")
 
-    # La ficha impresa asume que la bici pertenece al cliente que la trae.
-    # Aceptar una combinación cruzada produciría un PDF con datos incoherentes.
-    if bici.cliente_id != cliente.id:
-        raise HTTPException(
-            status_code=422,
-            detail=f"La bicicleta pertenece a {bici.cliente.nombre}, no a {cliente.nombre}",
-        )
+        # La ficha impresa asume que la bici pertenece al cliente que la trae.
+        # Aceptar una combinación cruzada produciría un PDF con datos incoherentes.
+        if bici.cliente_id != cliente.id:
+            raise HTTPException(
+                status_code=422,
+                detail=f"La bicicleta pertenece a {bici.cliente.nombre}, no a {cliente.nombre}",
+            )
+        bici_id = bici.id
 
     ficha = Ficha(
         numero=_siguiente_numero(db),
         cliente_id=cliente.id,
-        bicicleta_id=bici.id,
+        bicicleta_id=bici_id,
         estado=EstadoFicha.RECIBIDA,
         fecha_recepcion=data.fecha_recepcion or datetime.now(UTC),
         tecnico_recepcion_id=data.tecnico_recepcion_id or actor.id,
@@ -233,6 +277,9 @@ def create_ficha(
         canal_referencia=data.canal_referencia,
         servicios=[s.value for s in data.servicios],
         servicio_otro=data.servicio_otro,
+        costo_servicio=data.costo_servicio,
+        adelanto=data.adelanto,
+        adelanto_metodo=data.adelanto_metodo if data.adelanto > 0 else None,
         diagnostico_inicial=data.diagnostico_inicial,
         trabajo_realizado=data.trabajo_realizado,
         tiempo_invertido_min=data.tiempo_invertido_min,
@@ -243,12 +290,38 @@ def create_ficha(
     db.flush()
 
     _reemplazar_repuestos(db, ficha, data.repuestos, actor.id)
+
+    # El adelanto entra a caja aquí, al recibir: es dinero que ya se cobró. El
+    # saldo se cobrará al convertir el servicio en comprobante.
+    if data.adelanto and data.adelanto > 0:
+        if data.adelanto > ficha.total:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"El adelanto (S/ {data.adelanto:.2f}) supera el total del servicio "
+                f"(S/ {ficha.total:.2f})",
+            )
+        metodo = data.adelanto_metodo or MetodoPago.EFECTIVO
+        sesion = (
+            exigir_sesion_abierta(db) if metodo is MetodoPago.EFECTIVO else sesion_abierta(db)
+        )
+        if sesion is not None:
+            registrar_movimiento_caja(
+                db,
+                sesion,
+                TipoMovimientoCaja.INGRESO,
+                metodo,
+                data.adelanto,
+                concepto=f"Adelanto servicio N° {ficha.numero}",
+                usuario_id=actor.id,
+                referencia=ficha.numero,
+            )
+
     ficha.historial_estados.append(
         FichaEstadoLog(
             estado_anterior=None,
             estado_nuevo=EstadoFicha.RECIBIDA,
             usuario_id=actor.id,
-            comentario="Ficha creada",
+            comentario="Servicio creado",
         )
     )
 
@@ -342,6 +415,48 @@ def cambiar_estado(
     db.commit()
     db.refresh(ficha)
     return ficha
+
+
+@router.post("/{ficha_id}/facturar", response_model=ComprobanteDetail)
+def facturar_ficha(
+    ficha_id: uuid.UUID,
+    data: FacturarFichaIn,
+    db: Session = Depends(get_db),
+    actor: User = Depends(require_permission("facturacion.emitir")),
+) -> ComprobanteElectronico:
+    """Convierte un servicio entregado en boleta o factura electrónica.
+
+    Genera (o reutiliza) la venta que respalda el comprobante, cobra el saldo en
+    caja y emite el documento por FactPro. El tipo lo decide el documento del
+    cliente: factura si tiene RUC, boleta en cualquier otro caso.
+    """
+    ficha = _get_ficha(db, ficha_id)
+
+    if ficha.estado is not EstadoFicha.ENTREGADA:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Sólo se factura un servicio ya entregado",
+        )
+    if ficha.total <= 0:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="El servicio no tiene importe que facturar",
+        )
+
+    # Reintento idempotente: si ya existe la venta, no se vuelve a cobrar ni a
+    # crear otra. Con un comprobante vigente se bloquea; si el intento anterior
+    # quedó en ERROR, se reintenta la emisión sobre la misma venta.
+    venta = _venta_de_ficha(db, ficha.id)
+    if venta is not None:
+        if comprobante_vigente_de(db, venta.id) is not None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="El servicio ya fue facturado",
+            )
+        return emitir_desde_venta(db, venta, actor.id)
+
+    venta = crear_venta_desde_ficha(db, ficha, data.pagos, actor.id)
+    return emitir_desde_venta(db, venta, actor.id)
 
 
 @router.post("/{ficha_id}/firmas", response_model=FichaDetail)
@@ -537,7 +652,7 @@ def cancelar_ficha(
             estado_anterior=anterior,
             estado_nuevo=EstadoFicha.CANCELADA,
             usuario_id=actor.id,
-            comentario="Ficha cancelada · repuestos devueltos al inventario",
+            comentario="Servicio cancelado · repuestos devueltos al inventario",
         )
     )
     db.commit()

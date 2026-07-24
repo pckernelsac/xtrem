@@ -245,6 +245,7 @@
   </div>
 
   <!-- ===================== BICICLETA ===================== -->
+  {% if f.bicicleta %}
   <div class="seccion">
     <div class="tab">
       <span class="ico">{{ ico.icono("bici") }}</span>
@@ -259,6 +260,7 @@
       <div class="campo"><span class="k">N° DE SERIE:</span><span class="v">{{ f.bicicleta.numero_serie or "" }}</span></div>
     </div>
   </div>
+  {% endif %}
 
   <!-- ===================== RECEPCIÓN ===================== -->
   <div class="seccion">
@@ -348,10 +350,30 @@
           {% endfor %}
         </tbody>
       </table>
+      {% if tiene_mano_obra %}
+      <div class="total-fila">
+        <span class="lbl">REPUESTOS&nbsp;&nbsp;S/.</span>
+        <span class="caja">{{ total_repuestos }}</span>
+      </div>
+      <div class="total-fila">
+        <span class="lbl">MANO DE OBRA&nbsp;&nbsp;S/.</span>
+        <span class="caja">{{ costo_servicio }}</span>
+      </div>
+      {% endif %}
       <div class="total-fila">
         <span class="lbl">TOTAL&nbsp;&nbsp;S/.</span>
         <span class="caja">{{ total }}</span>
       </div>
+      {% if tiene_adelanto %}
+      <div class="total-fila">
+        <span class="lbl">ADELANTO&nbsp;&nbsp;S/.</span>
+        <span class="caja">{{ adelanto }}</span>
+      </div>
+      <div class="total-fila">
+        <span class="lbl">SALDO&nbsp;&nbsp;S/.</span>
+        <span class="caja">{{ saldo }}</span>
+      </div>
+      {% endif %}
     </div>
   </div>
 

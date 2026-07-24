@@ -11,6 +11,7 @@ import {
   MessageCircle,
   Pencil,
   Printer,
+  Receipt,
 } from "lucide-react"
 
 import { api, API_PREFIX, apiErrorMessage } from "@/lib/api"
@@ -21,6 +22,7 @@ import { Modal } from "@/components/ui/Modal"
 import { PageHeader } from "@/components/ui/PageHeader"
 import { SkeletonCard } from "@/components/ui/skeleton"
 import { fmtFechaHora } from "@/features/clientes/types"
+import { CobrarFacturarModal } from "@/features/fichas/CobrarFacturarModal"
 import { CompartirModal } from "@/features/fichas/CompartirModal"
 import { SignaturePad } from "@/features/fichas/SignaturePad"
 import {
@@ -52,11 +54,13 @@ export default function FichaDetailPage() {
   const canFirmar = usePermission("fichas.firmar")
   const canImprimir = usePermission("fichas.imprimir")
   const canCancelar = usePermission("fichas.eliminar")
+  const canFacturar = usePermission("facturacion.emitir")
 
   const [estadoOpen, setEstadoOpen] = useState(false)
   const [firmaOpen, setFirmaOpen] = useState(false)
   const [cancelarOpen, setCancelarOpen] = useState(false)
   const [compartirOpen, setCompartirOpen] = useState(false)
+  const [cobrarOpen, setCobrarOpen] = useState(false)
 
   const [nuevoEstado, setNuevoEstado] = useState<EstadoFicha>("EN_REVISION")
   const [comentario, setComentario] = useState("")
@@ -169,12 +173,17 @@ export default function FichaDetailPage() {
   if (!f) {
     return (
       <div className="grid h-full place-items-center text-sm text-muted-foreground">
-        Ficha no encontrada.
+        Servicio no encontrado.
       </div>
     )
   }
 
   const cerrada = ESTADOS_FINALES.includes(f.estado)
+  const biciTexto = f.bicicleta
+    ? [f.bicicleta.marca, f.bicicleta.modelo].filter(Boolean).join(" ")
+    : "Sin bicicleta"
+  const puedeFacturar =
+    canFacturar && f.estado === "ENTREGADA" && !f.facturacion && Number(f.total) > 0
 
   return (
     <div>
@@ -183,14 +192,20 @@ export default function FichaDetailPage() {
         className="mb-4 inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
       >
         <ArrowLeft className="h-3.5 w-3.5" />
-        Volver a fichas
+        Volver a servicios
       </button>
 
       <PageHeader
-        title={`Ficha N° ${f.numero}`}
-        description={`${f.cliente.nombre} · ${[f.bicicleta.marca, f.bicicleta.modelo].filter(Boolean).join(" ")}`}
+        title={`Servicio N° ${f.numero}`}
+        description={`${f.cliente.nombre} · ${biciTexto}`}
         actions={
           <div className="flex flex-wrap gap-2">
+            {puedeFacturar && (
+              <Button onClick={() => setCobrarOpen(true)}>
+                <Receipt className="h-3.5 w-3.5" />
+                Cobrar y facturar
+              </Button>
+            )}
             {canImprimir && (
               <>
                 <Button
@@ -277,17 +292,21 @@ export default function FichaDetailPage() {
           <Dato
             label="Bicicleta"
             value={
-              <Link
-                to={`/bicicletas/${f.bicicleta.id}`}
-                className="hover:text-primary hover:underline"
-              >
-                {[f.bicicleta.marca, f.bicicleta.modelo, f.bicicleta.color]
-                  .filter(Boolean)
-                  .join(" ")}
-              </Link>
+              f.bicicleta ? (
+                <Link
+                  to={`/bicicletas/${f.bicicleta.id}`}
+                  className="hover:text-primary hover:underline"
+                >
+                  {[f.bicicleta.marca, f.bicicleta.modelo, f.bicicleta.color]
+                    .filter(Boolean)
+                    .join(" ")}
+                </Link>
+              ) : (
+                <span className="text-muted-foreground">Sin bicicleta</span>
+              )
             }
           />
-          <Dato label="N° de serie" value={f.bicicleta.numero_serie} />
+          <Dato label="N° de serie" value={f.bicicleta?.numero_serie} />
           <Dato label="Técnico que recibió" value={f.tecnico_recepcion?.full_name} />
           <Dato label="Técnico responsable" value={f.tecnico_responsable?.full_name} />
           <Dato label="¿Cómo nos conoció?" value={f.canal_referencia} />
@@ -365,7 +384,7 @@ export default function FichaDetailPage() {
               <tfoot>
                 <tr className="border-t-2 border-border">
                   <td colSpan={2} className="pt-2 text-right text-sm font-medium">
-                    Total
+                    Subtotal repuestos
                   </td>
                   <td className="tabular pt-2 text-right text-base font-semibold">
                     {soles(f.total_repuestos)}
@@ -377,6 +396,62 @@ export default function FichaDetailPage() {
             <p className="mt-3 text-sm text-muted-foreground">No se usaron repuestos.</p>
           )}
         </div>
+      </div>
+
+      {/* ---------- Cobro ---------- */}
+      <div className="mt-4 rounded-lg border border-border bg-card p-5">
+        <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          Cobro
+        </h2>
+        <dl className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div>
+            <dt className="text-xs text-muted-foreground">Repuestos</dt>
+            <dd className="tabular mt-0.5 text-sm">{soles(f.total_repuestos)}</dd>
+          </div>
+          <div>
+            <dt className="text-xs text-muted-foreground">Mano de obra</dt>
+            <dd className="tabular mt-0.5 text-sm">{soles(f.costo_servicio)}</dd>
+          </div>
+          <div>
+            <dt className="text-xs text-muted-foreground">Total</dt>
+            <dd className="tabular mt-0.5 text-base font-semibold">{soles(f.total)}</dd>
+          </div>
+          <div>
+            <dt className="text-xs text-muted-foreground">Adelanto · Saldo</dt>
+            <dd className="tabular mt-0.5 text-sm">
+              {soles(f.adelanto)} · <span className="font-semibold">{soles(f.saldo)}</span>
+            </dd>
+          </div>
+        </dl>
+
+        {f.facturacion ? (
+          <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-border pt-4 text-sm">
+            <Badge tone="success">Facturado</Badge>
+            <Link
+              to={`/documentos/${f.facturacion.comprobante_id}`}
+              className="inline-flex items-center gap-1.5 hover:text-primary hover:underline"
+            >
+              <Receipt className="h-3.5 w-3.5" />
+              {f.facturacion.tipo === "FACTURA" ? "Factura" : "Boleta"} {f.facturacion.numero}
+            </Link>
+            {f.facturacion.es_simulado && <Badge tone="warning">Prueba</Badge>}
+          </div>
+        ) : (
+          f.estado === "ENTREGADA" &&
+          Number(f.total) > 0 && (
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-border pt-4">
+              <p className="text-sm text-muted-foreground">
+                El servicio está entregado y listo para facturar.
+              </p>
+              {puedeFacturar && (
+                <Button onClick={() => setCobrarOpen(true)}>
+                  <Receipt className="h-3.5 w-3.5" />
+                  Cobrar y facturar
+                </Button>
+              )}
+            </div>
+          )
+        )}
       </div>
 
       {/* ---------- Trabajo ---------- */}
@@ -449,7 +524,7 @@ export default function FichaDetailPage() {
 
         {!f.esta_firmada && (
           <p className="mt-3 text-xs text-muted-foreground">
-            La ficha necesita ambas firmas antes de poder marcarse como entregada.
+            El servicio necesita ambas firmas antes de poder marcarse como entregado.
           </p>
         )}
       </div>
@@ -489,7 +564,7 @@ export default function FichaDetailPage() {
           {canCancelar && !cerrada && (
             <Button variant="danger" onClick={() => setCancelarOpen(true)}>
               <Ban className="h-3.5 w-3.5" />
-              Cancelar ficha
+              Cancelar servicio
             </Button>
           )}
         </div>
@@ -518,7 +593,7 @@ export default function FichaDetailPage() {
         open={estadoOpen}
         onClose={() => setEstadoOpen(false)}
         title="Cambiar estado"
-        description={`Ficha N° ${f.numero} · actualmente ${ESTADO_INFO[f.estado].label}`}
+        description={`Servicio N° ${f.numero} · actualmente ${ESTADO_INFO[f.estado].label}`}
       >
         <Field label="Nuevo estado" required>
           <Select
@@ -626,17 +701,20 @@ export default function FichaDetailPage() {
         telefonoCliente={f.cliente.telefono}
       />
 
+      <CobrarFacturarModal open={cobrarOpen} onClose={() => setCobrarOpen(false)} ficha={f} />
+
+
       {/* ---------- Modal: cancelar ---------- */}
       <Modal
         open={cancelarOpen}
         onClose={() => setCancelarOpen(false)}
-        title="Cancelar ficha"
-        description={`Ficha N° ${f.numero}`}
+        title="Cancelar servicio"
+        description={`Servicio N° ${f.numero}`}
       >
         <p className="text-sm text-muted-foreground">
-          La ficha no se borra: queda en estado <b className="text-foreground">Cancelada</b> con
-          registro de quién la canceló. No se podrá reabrir; si el trabajo continúa, crea una ficha
-          nueva.
+          El servicio no se borra: queda en estado <b className="text-foreground">Cancelado</b> con
+          registro de quién lo canceló. No se podrá reabrir; si el trabajo continúa, crea un servicio
+          nuevo.
         </p>
         {f.repuestos.some((r) => r.producto) && (
           <p className="mt-3 rounded-md border border-border bg-muted/40 px-3 py-2.5 text-sm">

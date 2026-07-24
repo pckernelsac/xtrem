@@ -139,7 +139,14 @@ def _contexto(ficha: Ficha) -> dict[str, object]:
         "servicios_col1": _items(col1),
         "servicios_col2": _items(col2),
         "filas_repuestos": filas,
-        "total": _monto(ficha.total_repuestos),
+        "total_repuestos": _monto(ficha.total_repuestos),
+        "costo_servicio": _monto(ficha.costo_servicio),
+        "adelanto": _monto(ficha.adelanto),
+        "saldo": _monto(ficha.saldo),
+        "tiene_mano_obra": bool(ficha.costo_servicio and ficha.costo_servicio > 0),
+        "tiene_adelanto": bool(ficha.adelanto and ficha.adelanto > 0),
+        # Total del servicio: repuestos + mano de obra.
+        "total": _monto(ficha.total),
         "tiempo_texto": _tiempo_texto(ficha.tiempo_invertido_min),
     }
 
@@ -227,7 +234,7 @@ def render_ficha_ticket(ficha: Ficha, url_publica: str | None = None) -> bytes:
             "ancho_mm": settings.TICKET_ANCHO_MM,
             "margen_mm": settings.TICKET_MARGEN_MM,
             "estado_label": ETIQUETAS_ESTADO[ficha.estado.value],
-            "bici_desc": ficha.bicicleta.descripcion,
+            "bici_desc": ficha.bicicleta.descripcion if ficha.bicicleta else None,
             "servicios": [ETIQUETAS_SERVICIO.get(s, s) for s in (ficha.servicios or [])],
             "repuestos": [
                 {

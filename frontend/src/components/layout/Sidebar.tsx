@@ -34,7 +34,7 @@ const NAV: NavItem[] = [
   { to: "/", label: "Dashboard", corto: "Inicio", icon: LayoutDashboard, permission: "dashboard.ver" },
   { to: "/clientes", label: "Clientes", icon: Users, permission: "clientes.ver" },
   { to: "/bicicletas", label: "Bicicletas", corto: "Bicis", icon: Bike, permission: "bicicletas.ver" },
-  { to: "/fichas", label: "Fichas", icon: ClipboardList, permission: "fichas.ver" },
+  { to: "/fichas", label: "Servicios", icon: ClipboardList, permission: "fichas.ver" },
   { to: "/inventario", label: "Inventario", icon: Package, permission: "inventario.ver" },
   { to: "/ventas", label: "Ventas", icon: ShoppingCart, permission: "ventas.ver" },
   { to: "/cotizaciones", label: "Cotizaciones", corto: "Cotiz.", icon: FileSpreadsheet, permission: "ventas.ver" },

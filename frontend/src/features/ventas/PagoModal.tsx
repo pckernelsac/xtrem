@@ -29,10 +29,13 @@ export function PagoModal({
   titulo?: string
 }) {
   const [pagos, setPagos] = useState<LineaPago[]>([])
+  //: Efectivo que entrega el cliente; sólo para calcular el vuelto, no se anota.
+  const [recibido, setRecibido] = useState("")
 
   useEffect(() => {
     if (open) {
       setPagos([{ metodo: "EFECTIVO", monto: total.toFixed(2), referencia: "" }])
+      setRecibido("")
     }
   }, [open, total])
 
@@ -41,8 +44,16 @@ export function PagoModal({
 
   const cubierto = pagos.reduce((acc, p) => acc + (Number(p.monto) || 0), 0)
   const falta = Math.round((total - cubierto) * 100) / 100
-  const usaEfectivo = pagos.some((p) => p.metodo === "EFECTIVO" && Number(p.monto) > 0)
+  const totalEfectivo = pagos.reduce(
+    (acc, p) => acc + (p.metodo === "EFECTIVO" ? Number(p.monto) || 0 : 0),
+    0,
+  )
+  const usaEfectivo = totalEfectivo > 0
   const bloqueadoPorCaja = usaEfectivo && !cajaAbierta
+
+  // Vuelto = lo que entrega el cliente en efectivo menos el efectivo de la venta.
+  const montoRecibido = Number(recibido) || 0
+  const vuelto = Math.round((montoRecibido - totalEfectivo) * 100) / 100
 
   return (
     <Modal open={open} onClose={onClose} title={titulo} description={`Total a cobrar: ${soles(total)}`}>
@@ -134,6 +145,41 @@ export function PagoModal({
             </>
           )}
         </div>
+
+        {usaEfectivo && (
+          <div className="rounded-md border border-border p-3">
+            <div className="flex items-center justify-between gap-3">
+              <label className="text-sm text-muted-foreground">
+                Efectivo recibido
+                <span className="mt-0.5 block text-[11px]">
+                  Lo que entrega el cliente; sirve sólo para el vuelto.
+                </span>
+              </label>
+              <Input
+                type="number"
+                min="0"
+                step="0.01"
+                value={recibido}
+                onChange={(e) => setRecibido(e.target.value)}
+                placeholder={totalEfectivo.toFixed(2)}
+                className="w-32 text-right"
+              />
+            </div>
+            {montoRecibido > 0 && (
+              <div
+                className={cn(
+                  "mt-2 flex items-center justify-between border-t border-border pt-2 text-sm",
+                  vuelto < 0 ? "text-state-danger" : "text-foreground",
+                )}
+              >
+                <span className="font-medium">{vuelto < 0 ? "Falta efectivo" : "Vuelto"}</span>
+                <span className="tabular text-lg font-semibold">
+                  {soles(Math.abs(vuelto))}
+                </span>
+              </div>
+            )}
+          </div>
+        )}
 
         {bloqueadoPorCaja && (
           <div className="rounded-md border border-state-danger/30 bg-state-danger/10 px-3 py-2.5 text-sm text-state-danger">

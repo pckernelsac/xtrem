@@ -38,12 +38,15 @@ export function BicicletaFormModal({
   onClose,
   bicicleta,
   clienteId,
+  onCreated,
 }: {
   open: boolean
   onClose: () => void
   bicicleta?: Bicicleta | null
   /** Preselecciona el dueño al crear desde la ficha de un cliente. */
   clienteId?: string
+  /** Se llama con la bici recién creada (no al editar): útil para autoseleccionarla. */
+  onCreated?: (bicicleta: Bicicleta) => void
 }) {
   const qc = useQueryClient()
   const [form, setForm] = useState<FormState>(VACIO)
@@ -98,12 +101,17 @@ export function BicicletaFormModal({
         anio: form.anio ? Number(form.anio) : null,
         notas: form.notas.trim() || null,
       }
-      if (bicicleta) await api.patch(`${API_PREFIX}/bicicletas/${bicicleta.id}`, payload)
-      else await api.post(`${API_PREFIX}/bicicletas`, payload)
+      if (bicicleta) {
+        await api.patch(`${API_PREFIX}/bicicletas/${bicicleta.id}`, payload)
+        return null
+      }
+      const { data } = await api.post<Bicicleta>(`${API_PREFIX}/bicicletas`, payload)
+      return data
     },
-    onSuccess: () => {
+    onSuccess: (creada) => {
       qc.invalidateQueries({ queryKey: ["bicicletas"] })
       qc.invalidateQueries({ queryKey: ["clientes"] })
+      if (creada) onCreated?.(creada)
       onClose()
     },
   })

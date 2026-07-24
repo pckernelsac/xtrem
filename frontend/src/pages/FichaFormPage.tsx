@@ -7,6 +7,7 @@ import { api, API_PREFIX, apiErrorMessage } from "@/lib/api"
 import { Button, Field, FormError, Input, Select, Textarea } from "@/components/ui/Form"
 import { PageHeader } from "@/components/ui/PageHeader"
 import { SkeletonCard } from "@/components/ui/skeleton"
+import { BicicletaFormModal } from "@/features/clientes/BicicletaFormModal"
 import { BuscarClienteDocumento } from "@/features/clientes/BuscarClienteDocumento"
 import type { Bicicleta, Cliente, Page } from "@/features/clientes/types"
 import { cantidad as fmtCantidad, type Producto as ProductoInv } from "@/features/inventario/types"
@@ -55,6 +56,7 @@ export default function FichaFormPage() {
 
   const [clienteId, setClienteId] = useState("")
   const [bicicletaId, setBicicletaId] = useState("")
+  const [biciModalOpen, setBiciModalOpen] = useState(false)
   const [canal, setCanal] = useState("")
   const [servicios, setServicios] = useState<Set<ServicioCodigo>>(new Set())
   const [servicioOtro, setServicioOtro] = useState("")
@@ -308,25 +310,44 @@ export default function FichaFormPage() {
               label="Bicicleta (opcional)"
               hint={
                 clienteId && bicisQ.data?.items.length === 0
-                  ? "Este cliente no tiene bicicletas activas registradas."
+                  ? "Este cliente no tiene bicicletas registradas. Usa “Registrar nueva”."
                   : "Déjalo en blanco si el servicio no involucra una bicicleta."
               }
             >
-              <Select
-                value={bicicletaId}
-                disabled={editando || !clienteId}
-                onChange={(e) => setBicicletaId(e.target.value)}
-              >
-                <option value="">
-                  {clienteId ? "Sin bicicleta / no aplica" : "Elige primero el cliente"}
-                </option>
-                {(bicisQ.data?.items ?? []).map((b) => (
-                  <option key={b.id} value={b.id}>
-                    {b.descripcion}
-                    {b.numero_serie ? ` · ${b.numero_serie}` : ""}
+              <div className="flex gap-2">
+                <Select
+                  value={bicicletaId}
+                  disabled={editando || !clienteId}
+                  onChange={(e) => setBicicletaId(e.target.value)}
+                  className="flex-1"
+                >
+                  <option value="">
+                    {clienteId ? "Sin bicicleta / no aplica" : "Elige primero el cliente"}
                   </option>
-                ))}
-              </Select>
+                  {(bicisQ.data?.items ?? []).map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.descripcion}
+                      {b.numero_serie ? ` · ${b.numero_serie}` : ""}
+                    </option>
+                  ))}
+                </Select>
+                {!editando && (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    disabled={!clienteId}
+                    onClick={() => setBiciModalOpen(true)}
+                    title={
+                      clienteId
+                        ? "Registrar la bicicleta que entra a revisión"
+                        : "Elige primero el cliente"
+                    }
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    Registrar nueva
+                  </Button>
+                )}
+              </div>
             </Field>
           </div>
 
@@ -612,7 +633,7 @@ export default function FichaFormPage() {
 
         <FormError
           message={
-            guardar.isError ? apiErrorMessage(guardar.error, "No se pudo guardar la ficha") : null
+            guardar.isError ? apiErrorMessage(guardar.error, "No se pudo guardar el servicio") : null
           }
         />
 
@@ -622,10 +643,18 @@ export default function FichaFormPage() {
           </Button>
           <Button type="submit" disabled={guardar.isPending}>
             {guardar.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
-            {editando ? "Guardar cambios" : "Crear ficha"}
+            {editando ? "Guardar cambios" : "Crear servicio"}
           </Button>
         </div>
       </form>
+
+      {/* Registrar al vuelo la bicicleta que entra a revisión, sin salir del servicio. */}
+      <BicicletaFormModal
+        open={biciModalOpen}
+        onClose={() => setBiciModalOpen(false)}
+        clienteId={clienteId}
+        onCreated={(b) => setBicicletaId(b.id)}
+      />
     </div>
   )
 }

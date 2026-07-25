@@ -70,29 +70,73 @@ def _get(ruta: str) -> dict:
         ) from exc
 
 
+#: Partículas que van pegadas al apellido y no lo dan por terminado:
+#: "DE LA CRUZ" es un apellido, no tres. Se listan sin tilde porque se comparan
+#: contra el texto del padrón, que viene en mayúsculas y sin acentuar.
+PARTICULAS = {
+    "DE", "DEL", "LA", "LAS", "LOS", "DA", "DAS", "DI", "DO", "DOS",
+    "VAN", "VON", "MC", "MAC", "SAN", "SANTA", "VDA",
+}
+
+
+def _partir_padron(completo: str) -> tuple[str, str]:
+    """Parte un nombre en orden de padrón en (nombres de pila, apellidos).
+
+    RENIEC entrega "APELLIDO_PATERNO APELLIDO_MATERNO NOMBRES" en una sola
+    cadena, así que los dos primeros apellidos se leen de izquierda a derecha y
+    lo que sobra son los nombres de pila:
+
+        "QUISPE MAMANI ROSA MARIA"    -> ("ROSA MARIA", "QUISPE MAMANI")
+        "DE LA CRUZ QUISPE JOSE LUIS" -> ("JOSE LUIS", "DE LA CRUZ QUISPE")
+
+    Devuelve ("", completo) cuando no se puede separar con seguridad —menos de
+    tres palabras—, para dejar el nombre tal cual en vez de inventarse un corte.
+    """
+    palabras = completo.split()
+    if len(palabras) < 3:
+        return "", completo
+
+    i = 0
+    apellidos: list[str] = []
+    for _ in range(2):  # paterno y materno
+        # Las partículas se acumulan hasta llegar al apellido propiamente dicho.
+        while i < len(palabras) and palabras[i].upper() in PARTICULAS:
+            apellidos.append(palabras[i])
+            i += 1
+        if i >= len(palabras):
+            break
+        apellidos.append(palabras[i])
+        i += 1
+
+    nombres = palabras[i:]
+    if not nombres or not apellidos:
+        return "", completo
+    return " ".join(nombres), " ".join(apellidos)
+
+
 def _nombre_persona(data: dict) -> str:
     """Arma el nombre completo con los campos que existan.
 
-    El orden es *nombres primero* ("Rosa Quispe Mamani"), no el del padrón
+    El orden es *nombres primero* ("ROSA QUISPE MAMANI"), no el del padrón
     ("QUISPE MAMANI ROSA"): así el nombre de pila queda al inicio y los saludos
     al cliente —WhatsApp, sobre todo— dicen el nombre y no el apellido.
     """
-    nombres = data.get("nombres") or data.get("nombre") or ""
-    ap_paterno = data.get("apellido_paterno") or data.get("apellidoPaterno") or ""
-    ap_materno = data.get("apellido_materno") or data.get("apellidoMaterno") or ""
+    ap_paterno = str(data.get("apellido_paterno") or data.get("apellidoPaterno") or "").strip()
+    ap_materno = str(data.get("apellido_materno") or data.get("apellidoMaterno") or "").strip()
 
-    partes = [nombres, ap_paterno, ap_materno]
-    completo = " ".join(p.strip() for p in partes if p and p.strip())
-    if completo:
-        return completo
+    for clave in ("nombres", "nombre", "nombre_completo", "nombreCompleto", "nombres_completos"):
+        valor = str(data.get(clave) or "").strip()
+        if not valor:
+            continue
+        if ap_paterno or ap_materno:
+            # Vienen los apellidos aparte: `valor` son sólo los nombres de pila.
+            return " ".join(p for p in (valor, ap_paterno, ap_materno) if p)
+        # Un único campo con todo dentro, que es lo que devuelve hoy la API de
+        # consultas de FactPro para DNI: hay que darle la vuelta.
+        nombres, apellidos = _partir_padron(valor)
+        return f"{nombres} {apellidos}" if nombres else valor
 
-    # Sin campos separados sólo queda el nombre completo tal como lo dé el
-    # padrón, que sí viene con los apellidos delante.
-    for clave in ("nombre_completo", "nombreCompleto", "nombres_completos"):
-        if data.get(clave):
-            return str(data[clave]).strip()
-
-    return ""
+    return " ".join(p for p in (ap_paterno, ap_materno) if p)
 
 
 def consultar_dni(dni: str) -> dict:

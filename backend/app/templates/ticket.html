@@ -68,9 +68,6 @@
 
   .parrafo { font-size: 7.5pt; white-space: pre-wrap; }
 
-  .firmas { display: flex; gap: 4mm; margin-top: 6mm; }
-  .firmas > div { flex: 1; text-align: center; }
-  .firmas .linea { border-top: 1px solid #000; padding-top: .8mm; font-size: 6.5pt; }
 
   .qr { width: 26mm; height: 26mm; margin: 0 auto; display: block; }
 </style>
@@ -189,17 +186,6 @@
     Pasadas 2 semanas sin recoger la bicicleta se aplicará el 20% del costo total
     por estacionamiento. El mantenimiento general tiene garantía de 7 días desde
     la entrega, salvo rotura o desperfecto en los accesorios.
-  </div>
-
-  <div class="firmas">
-    <div>
-      {% if firma_cliente %}<img src="{{ firma_cliente }}" style="height:11mm;">{% endif %}
-      <div class="linea">FIRMA DEL CLIENTE</div>
-    </div>
-    <div>
-      {% if firma_tecnico %}<img src="{{ firma_tecnico }}" style="height:11mm;">{% endif %}
-      <div class="linea">FIRMA DEL TÉCNICO</div>
-    </div>
   </div>
 
   {% if qr %}

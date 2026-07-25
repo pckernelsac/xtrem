@@ -24,7 +24,6 @@ import { SkeletonCard } from "@/components/ui/skeleton"
 import { fmtFechaHora } from "@/features/clientes/types"
 import { CobrarFacturarModal } from "@/features/fichas/CobrarFacturarModal"
 import { CompartirModal } from "@/features/fichas/CompartirModal"
-import { SignaturePad } from "@/features/fichas/SignaturePad"
 import {
   ESTADOS,
   ESTADOS_FINALES,
@@ -51,23 +50,17 @@ export default function FichaDetailPage() {
 
   const canEdit = usePermission("fichas.editar")
   const canEstado = usePermission("fichas.cambiar_estado")
-  const canFirmar = usePermission("fichas.firmar")
   const canImprimir = usePermission("fichas.imprimir")
   const canCancelar = usePermission("fichas.eliminar")
   const canFacturar = usePermission("facturacion.emitir")
 
   const [estadoOpen, setEstadoOpen] = useState(false)
-  const [firmaOpen, setFirmaOpen] = useState(false)
   const [cancelarOpen, setCancelarOpen] = useState(false)
   const [compartirOpen, setCompartirOpen] = useState(false)
   const [cobrarOpen, setCobrarOpen] = useState(false)
 
   const [nuevoEstado, setNuevoEstado] = useState<EstadoFicha>("EN_REVISION")
   const [comentario, setComentario] = useState("")
-  const [firmaCliente, setFirmaCliente] = useState<string | null>(null)
-  const [dniCliente, setDniCliente] = useState("")
-  const [firmaTecnico, setFirmaTecnico] = useState<string | null>(null)
-  const [dniTecnico, setDniTecnico] = useState("")
   const [imprimiendo, setImprimiendo] = useState(false)
 
   const { data: f, isLoading } = useQuery({
@@ -92,25 +85,6 @@ export default function FichaDetailPage() {
       invalidar()
       setEstadoOpen(false)
       setComentario("")
-    },
-  })
-
-  const guardarFirmas = useMutation({
-    mutationFn: async () => {
-      const payload: Record<string, string | null> = {}
-      if (firmaCliente) {
-        payload.firma_cliente = firmaCliente
-        payload.firma_cliente_dni = dniCliente.trim() || null
-      }
-      if (firmaTecnico) {
-        payload.firma_tecnico = firmaTecnico
-        payload.firma_tecnico_dni = dniTecnico.trim() || null
-      }
-      await api.post(`${API_PREFIX}/fichas/${id}/firmas`, payload)
-    },
-    onSuccess: () => {
-      invalidar()
-      setFirmaOpen(false)
     },
   })
 
@@ -263,11 +237,6 @@ export default function FichaDetailPage() {
       <div className="rounded-lg border border-border bg-card p-5">
         <div className="flex flex-wrap items-center gap-3">
           <Badge tone={ESTADO_INFO[f.estado].tone}>{ESTADO_INFO[f.estado].label}</Badge>
-          {f.esta_firmada ? (
-            <Badge tone="success">Firmada</Badge>
-          ) : (
-            <Badge tone="warning">Sin firmar</Badge>
-          )}
           <span className="tabular text-sm text-muted-foreground">
             Recepción: {fmtFechaHora(f.fecha_recepcion)}
           </span>
@@ -481,54 +450,6 @@ export default function FichaDetailPage() {
         </div>
       </div>
 
-      {/* ---------- Firmas ---------- */}
-      <div className="mt-4 rounded-lg border border-border bg-card p-5">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            Firmas de conformidad
-          </h2>
-          {canFirmar && !cerrada && (
-            <Button
-              variant="secondary"
-              onClick={() => {
-                setFirmaCliente(f.firma_cliente)
-                setDniCliente(f.firma_cliente_dni ?? f.cliente.numero_documento)
-                setFirmaTecnico(f.firma_tecnico)
-                setDniTecnico(f.firma_tecnico_dni ?? "")
-                setFirmaOpen(true)
-              }}
-            >
-              {f.esta_firmada ? "Rehacer firmas" : "Registrar firmas"}
-            </Button>
-          )}
-        </div>
-
-        <div className="mt-4 grid gap-4 sm:grid-cols-2">
-          {[
-            { titulo: "Cliente", img: f.firma_cliente, dni: f.firma_cliente_dni },
-            { titulo: "Técnico", img: f.firma_tecnico, dni: f.firma_tecnico_dni },
-          ].map((s) => (
-            <div key={s.titulo} className="rounded-md border border-border p-3">
-              <p className="text-xs font-medium text-muted-foreground">Firma del {s.titulo}</p>
-              <div className="mt-2 flex h-24 items-center justify-center rounded bg-muted/40">
-                {s.img ? (
-                  <img src={s.img} alt={`Firma del ${s.titulo}`} className="max-h-20" />
-                ) : (
-                  <span className="text-xs text-muted-foreground">Pendiente</span>
-                )}
-              </div>
-              <p className="tabular mt-2 text-xs text-muted-foreground">DNI: {s.dni || "—"}</p>
-            </div>
-          ))}
-        </div>
-
-        {!f.esta_firmada && (
-          <p className="mt-3 text-xs text-muted-foreground">
-            El servicio necesita ambas firmas antes de poder marcarse como entregado.
-          </p>
-        )}
-      </div>
-
       {/* ---------- Consulta pública ---------- */}
       <div className="mt-4 rounded-lg border border-border bg-card p-5">
         <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
@@ -608,13 +529,6 @@ export default function FichaDetailPage() {
           </Select>
         </Field>
 
-        {nuevoEstado === "ENTREGADA" && !f.esta_firmada && (
-          <p className="mt-3 rounded-md border border-state-warning/30 bg-state-warning/10 px-3 py-2 text-xs text-state-warning">
-            Falta registrar las firmas del cliente y del técnico. El sistema no permitirá marcar la
-            entrega sin ellas.
-          </p>
-        )}
-
         <Field label="Comentario" className="mt-4">
           <Input
             value={comentario}
@@ -640,55 +554,6 @@ export default function FichaDetailPage() {
           <Button disabled={cambiarEstado.isPending} onClick={() => cambiarEstado.mutate()}>
             {cambiarEstado.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
             Confirmar
-          </Button>
-        </div>
-      </Modal>
-
-      {/* ---------- Modal: firmas ---------- */}
-      <Modal
-        open={firmaOpen}
-        onClose={() => setFirmaOpen(false)}
-        title="Firmas de conformidad"
-        description="El cliente y el técnico firman en pantalla; las firmas se imprimen en el PDF."
-        className="max-w-2xl"
-      >
-        <div className="grid gap-5 sm:grid-cols-2">
-          <div>
-            <p className="mb-2 text-xs font-medium text-muted-foreground">Firma del cliente</p>
-            <SignaturePad value={firmaCliente} onChange={setFirmaCliente} />
-            <Field label="DNI del cliente" className="mt-2">
-              <Input value={dniCliente} onChange={(e) => setDniCliente(e.target.value)} />
-            </Field>
-          </div>
-          <div>
-            <p className="mb-2 text-xs font-medium text-muted-foreground">Firma del técnico</p>
-            <SignaturePad value={firmaTecnico} onChange={setFirmaTecnico} />
-            <Field label="DNI del técnico" className="mt-2">
-              <Input value={dniTecnico} onChange={(e) => setDniTecnico(e.target.value)} />
-            </Field>
-          </div>
-        </div>
-
-        <div className="mt-4">
-          <FormError
-            message={
-              guardarFirmas.isError
-                ? apiErrorMessage(guardarFirmas.error, "No se pudieron guardar las firmas")
-                : null
-            }
-          />
-        </div>
-
-        <div className="mt-4 flex justify-end gap-2">
-          <Button variant="secondary" onClick={() => setFirmaOpen(false)}>
-            Cancelar
-          </Button>
-          <Button
-            disabled={guardarFirmas.isPending || (!firmaCliente && !firmaTecnico)}
-            onClick={() => guardarFirmas.mutate()}
-          >
-            {guardarFirmas.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
-            Guardar firmas
           </Button>
         </div>
       </Modal>

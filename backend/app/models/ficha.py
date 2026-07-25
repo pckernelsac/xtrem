@@ -174,7 +174,10 @@ class Ficha(UUIDMixin, TimestampMixin, Base):
     #: historial de la bicicleta: sólo deja de aparecer en el día a día.
     archivada_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
-    # --- Firmas (data URL PNG capturada en canvas) ---
+    # --- Firmas de conformidad (función retirada el 25-jul-2026) ---
+    # Ya no se capturan ni se imprimen; las columnas se conservan porque
+    # guardan las firmas de los servicios ya entregados y borrarlas sería
+    # destruir el respaldo de esas entregas.
     firma_cliente: Mapped[str | None] = mapped_column(Text)
     firma_cliente_dni: Mapped[str | None] = mapped_column(String(15))
     firma_tecnico: Mapped[str | None] = mapped_column(Text)
@@ -211,10 +214,6 @@ class Ficha(UUIDMixin, TimestampMixin, Base):
     @property
     def archivada(self) -> bool:
         return self.archivada_at is not None
-
-    @property
-    def esta_firmada(self) -> bool:
-        return bool(self.firma_cliente and self.firma_tecnico)
 
 
 class FichaRepuesto(UUIDMixin, Base):

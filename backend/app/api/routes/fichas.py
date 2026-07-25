@@ -36,7 +36,6 @@ from app.schemas.ficha import (
     FichaOut,
     FichaPage,
     FichaUpdate,
-    FirmaIn,
     RepuestoIn,
 )
 from app.services.caja import (
@@ -394,14 +393,6 @@ def cambiar_estado(
             detail=f"La ficha está {ficha.estado.value}; crea una ficha nueva para reabrir el caso",
         )
 
-    # Entregar sin firmas dejaría al taller sin constancia de la entrega,
-    # que es justamente lo que la ficha firmada respalda.
-    if data.estado == EstadoFicha.ENTREGADA and not ficha.esta_firmada:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Registra la firma del cliente y del técnico antes de marcar la entrega",
-        )
-
     anterior = ficha.estado
     ficha.estado = data.estado
 
@@ -468,32 +459,6 @@ def facturar_ficha(
 
     venta = crear_venta_desde_ficha(db, ficha, data.pagos, actor.id)
     return emitir_desde_venta(db, venta, actor.id)
-
-
-@router.post("/{ficha_id}/firmas", response_model=FichaDetail)
-def registrar_firmas(
-    ficha_id: uuid.UUID,
-    data: FirmaIn,
-    db: Session = Depends(get_db),
-    _: User = Depends(require_permission("fichas.firmar")),
-) -> Ficha:
-    ficha = _get_ficha(db, ficha_id)
-
-    if ficha.estado in ESTADOS_FINALES:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=f"La ficha está {ficha.estado.value} y sus firmas ya no se modifican",
-        )
-
-    for field, value in data.model_dump(exclude_unset=True).items():
-        setattr(ficha, field, value)
-
-    if ficha.esta_firmada and ficha.fecha_firma is None:
-        ficha.fecha_firma = datetime.now(UTC)
-
-    db.commit()
-    db.refresh(ficha)
-    return ficha
 
 
 def _autorizar_impresion(

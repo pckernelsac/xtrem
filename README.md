@@ -126,15 +126,15 @@ no `MAX(numero)+1`: dos recepciones simultáneas nunca reciben el mismo número.
 
 Estados: Recibida → En revisión → Esperando repuestos → En reparación →
 Lista para entregar → Entregada. `Entregada` y `Cancelada` son finales: la ficha
-deja de admitir ediciones, cambios de estado y firmas. Cada transición queda en
+deja de admitir ediciones ni cambios de estado. Cada transición queda en
 `ficha_estados_log` con usuario, fecha y comentario.
 
-No se puede marcar **Entregada** sin las dos firmas registradas: la ficha firmada
-es el respaldo de la entrega.
-
-Las firmas se capturan en canvas y se guardan como data URL PNG. Se validan
-decodificándolas con Pillow al guardar; un PNG corrupto dejaría la ficha
-imposible de imprimir para siempre.
+**Las firmas de conformidad se retiraron** (25-jul-2026): ya no se capturan en
+pantalla ni se imprimen en el PDF ni en el ticket, y marcar la entrega no exige
+firma alguna. Las columnas `firma_*` y `fecha_firma` siguen en `fichas` con lo
+ya registrado; no hay migración que las borre. El permiso `fichas.firmar` salió
+del catálogo, así que el listado de permisos lo filtra aunque su fila siga en la
+tabla.
 
 ### Compartir por WhatsApp
 

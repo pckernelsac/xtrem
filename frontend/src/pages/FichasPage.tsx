@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Link } from "react-router-dom"
-import { Archive, ArchiveRestore, FileText, PenLine, Plus, Search } from "lucide-react"
+import { Archive, ArchiveRestore, FileText, Plus, Search } from "lucide-react"
 
 import { api, API_PREFIX } from "@/lib/api"
 import { usePermission } from "@/lib/auth"
@@ -207,16 +207,9 @@ export default function FichasPage() {
                     </td>
                     <td className="tabular px-4 py-2.5 text-right">{soles(f.total)}</td>
                     <td className="px-4 py-2.5">
-                      <div className="flex items-center gap-1.5">
-                        <Badge tone={ESTADO_INFO[f.estado].tone}>
-                          {ESTADO_INFO[f.estado].label}
-                        </Badge>
-                        {f.esta_firmada && (
-                          <span title="Firmada por cliente y técnico">
-                            <PenLine className="h-3.5 w-3.5 text-state-success" />
-                          </span>
-                        )}
-                      </div>
+                      <Badge tone={ESTADO_INFO[f.estado].tone}>
+                        {ESTADO_INFO[f.estado].label}
+                      </Badge>
                     </td>
                     <td className="px-4 py-2.5">
                       <div className="flex justify-end gap-1">

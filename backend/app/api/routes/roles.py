@@ -51,8 +51,20 @@ def list_permissions(
     db: Session = Depends(get_db),
     _: User = Depends(require_permission("roles.ver")),
 ) -> list[Permission]:
-    """Catálogo completo de permisos, para pintar la matriz de asignación."""
-    return list(db.scalars(select(Permission).order_by(Permission.module, Permission.code)).all())
+    """Catálogo completo de permisos, para pintar la matriz de asignación.
+
+    Se filtra contra el catálogo del código: el seed no borra los permisos
+    retirados (un rol podría tenerlos asignados), y sin este filtro seguirían
+    apareciendo como casilla marcable que luego el guardado rechaza por
+    desconocida.
+    """
+    return list(
+        db.scalars(
+            select(Permission)
+            .where(Permission.code.in_(PERMISSION_CODES))
+            .order_by(Permission.module, Permission.code)
+        ).all()
+    )
 
 
 @router.get("", response_model=list[RoleOut])

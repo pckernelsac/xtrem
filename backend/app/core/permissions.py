@@ -35,7 +35,6 @@ PERMISSIONS: list[PermissionDef] = [
         "fichas de mantenimiento",
         {
             "cambiar_estado": "Cambiar el estado de una orden",
-            "firmar": "Registrar firmas de entrega",
             "imprimir": "Generar el PDF de la ficha",
         },
     ),
@@ -89,7 +88,7 @@ DEFAULT_ROLES: dict[str, dict[str, object]] = {
             "clientes.ver",
             "bicicletas.ver", "bicicletas.crear", "bicicletas.editar",
             "fichas.ver", "fichas.crear", "fichas.editar",
-            "fichas.cambiar_estado", "fichas.firmar", "fichas.imprimir",
+            "fichas.cambiar_estado", "fichas.imprimir",
             "inventario.ver", "inventario.ajustar_stock",
         ],
     },

@@ -61,8 +61,6 @@
 
   .parrafo { font-size: 7.5pt; white-space: pre-wrap; }
 
-  .firma { margin-top: 8mm; text-align: center; }
-  .firma .linea { border-top: 1px solid #000; padding-top: .8mm; font-size: 6.5pt; }
 </style>
 </head>
 <body>
@@ -148,9 +146,6 @@
     Precios en soles, incluyen IGV.<br>
     {% if valido_hasta %}Vigencia hasta el {{ valido_hasta }}.<br>{% endif %}
     Sujeta a stock. No es comprobante de pago.
-  </div>
-  <div class="firma">
-    <div class="linea">Firma de conformidad</div>
   </div>
   {% else %}
   <div class="centro chico">

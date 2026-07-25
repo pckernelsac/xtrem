@@ -112,7 +112,6 @@ export type Ficha = {
   total: string
   adelanto: string
   saldo: string
-  esta_firmada: boolean
   archivada: boolean
   created_at: string
 }
@@ -140,11 +139,6 @@ export type FichaDetail = Ficha & {
   garantia_dias: number | null
   adelanto_metodo: MetodoPago | null
   tecnico_entrega: UsuarioBrief | null
-  firma_cliente: string | null
-  firma_cliente_dni: string | null
-  firma_tecnico: string | null
-  firma_tecnico_dni: string | null
-  fecha_firma: string | null
   repuestos: Repuesto[]
   historial_estados: EstadoLog[]
   facturacion: FacturacionFicha | null

@@ -1,10 +1,7 @@
-import base64
 import uuid
 from datetime import datetime
 from decimal import Decimal
-from io import BytesIO
 
-from PIL import Image
 from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator
 
 from app.models.bicicleta import TipoBicicleta
@@ -12,8 +9,6 @@ from app.models.caja import MetodoPago
 from app.models.comprobante import EstadoComprobante, TipoComprobante
 from app.models.ficha import EstadoFicha, ServicioSolicitado
 from app.models.inventario import TipoItem
-
-PREFIJO_PNG = "data:image/png;base64,"
 
 
 class RepuestoIn(BaseModel):
@@ -132,39 +127,6 @@ class CambioEstadoIn(BaseModel):
     comentario: str | None = Field(default=None, max_length=300)
 
 
-class FirmaIn(BaseModel):
-    """Firmas capturadas en canvas, como data URL PNG."""
-
-    firma_cliente: str | None = None
-    firma_cliente_dni: str | None = Field(default=None, max_length=15)
-    firma_tecnico: str | None = None
-    firma_tecnico_dni: str | None = Field(default=None, max_length=15)
-
-    @field_validator("firma_cliente", "firma_tecnico")
-    @classmethod
-    def validar_data_url(cls, v: str | None) -> str | None:
-        if v is None:
-            return None
-        if not v.startswith(PREFIJO_PNG):
-            raise ValueError("La firma debe ser un data URL PNG en base64")
-        # ~1 MB de base64 alcanza de sobra para un trazo de firma; el límite
-        # evita que alguien suba una foto completa por este campo.
-        if len(v) > 1_400_000:
-            raise ValueError("La firma excede el tamaño máximo permitido")
-
-        # Se decodifica de verdad: un PNG truncado pasaría el chequeo de
-        # prefijo y luego rompería la generación del PDF, dejando la ficha
-        # imposible de imprimir sin forma de corregirla desde la UI.
-        try:
-            crudo = base64.b64decode(v[len(PREFIJO_PNG) :], validate=True)
-            with Image.open(BytesIO(crudo)) as img:
-                img.verify()
-        except Exception as exc:
-            raise ValueError("La firma no es un PNG válido") from exc
-
-        return v
-
-
 class EstadoLogOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -192,7 +154,6 @@ class FichaOut(BaseModel):
     total: Decimal
     adelanto: Decimal
     saldo: Decimal
-    esta_firmada: bool
     archivada: bool = False
     created_at: datetime
 
@@ -221,11 +182,6 @@ class FichaDetail(FichaOut):
     garantia_dias: int | None
     adelanto_metodo: MetodoPago | None
     tecnico_entrega: UsuarioFicha | None
-    firma_cliente: str | None
-    firma_cliente_dni: str | None
-    firma_tecnico: str | None
-    firma_tecnico_dni: str | None
-    fecha_firma: datetime | None
     repuestos: list[RepuestoOut]
     historial_estados: list[EstadoLogOut]
     #: Lo rellena el endpoint de detalle; no es una columna de la ficha.

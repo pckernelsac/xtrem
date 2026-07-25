@@ -168,24 +168,6 @@
     text-align: right; font-weight: bold; font-size: 8.5pt;
   }
 
-  /* ---------- Firmas ---------- */
-  .firma-caja { border: 1.4pt solid #e2201f; border-radius: 2.4mm; overflow: hidden; }
-  .firma-caja .cab {
-    background: #e2201f; color: #fff; font-weight: bold; font-style: italic;
-    font-size: 8pt; padding: 1.3mm 3mm; letter-spacing: .3pt;
-    display: flex; align-items: center; gap: 2mm;
-  }
-  .firma-caja .cab .i { flex: 0 0 3.6mm; height: 3.6mm; overflow: hidden; }
-  .firma-caja .cuerpo {
-    padding: 1.6mm 3mm 2.2mm 3mm; height: 21mm;
-    display: flex; flex-direction: column; justify-content: flex-end;
-  }
-  .firma-img { flex: 1; display: flex; align-items: flex-end; justify-content: center; }
-  .firma-img img { max-height: 12mm; max-width: 58mm; }
-  .firma-linea { border-bottom: .8pt solid #111; margin: 0 4mm 1mm 4mm; }
-  .firma-dni { font-size: 7.2pt; font-style: italic; font-weight: bold; }
-  .firma-dni span { font-weight: normal; font-style: normal; }
-
   /* ---------- Pie ---------- */
   .pie {
     background: #111; color: #fff; margin-top: 2.4mm; padding: 1.8mm 4mm;
@@ -428,27 +410,6 @@
       </div>
     </div>
     <div class="campo"><span class="k">TÉCNICO QUE REALIZÓ EL SERVICIO:</span><span class="v">{{ f.tecnico_responsable.full_name if f.tecnico_responsable else "" }}</span></div>
-  </div>
-
-  <!-- ===================== FIRMAS ===================== -->
-  <div class="cols" style="margin-top:2.4mm;">
-    <div class="firma-caja">
-      <div class="cab"><span class="i">{{ ico.icono("firma", "3.6mm") }}</span>FIRMA DEL CLIENTE</div>
-      <div class="cuerpo">
-        <div class="firma-img">{% if firma_cliente %}<img src="{{ firma_cliente }}" alt="">{% endif %}</div>
-        <div class="firma-linea"></div>
-        <div class="firma-dni">DNI: <span>{{ f.firma_cliente_dni or f.cliente.numero_documento }}</span></div>
-      </div>
-    </div>
-
-    <div class="firma-caja">
-      <div class="cab"><span class="i">{{ ico.icono("persona", "3.6mm") }}</span>FIRMA DEL TÉCNICO</div>
-      <div class="cuerpo">
-        <div class="firma-img">{% if firma_tecnico %}<img src="{{ firma_tecnico }}" alt="">{% endif %}</div>
-        <div class="firma-linea"></div>
-        <div class="firma-dni">DNI: <span>{{ f.firma_tecnico_dni or "" }}</span></div>
-      </div>
-    </div>
   </div>
 
   {% if qr %}

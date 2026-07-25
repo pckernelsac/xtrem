@@ -81,8 +81,6 @@
   .condiciones { margin-top: 6mm; font-size: 7.2pt; color: #555; }
   .condiciones li { margin-left: 4mm; }
 
-  .firma { margin-top: 14mm; width: 62mm; text-align: center; }
-  .firma .linea { border-top: .8pt solid #111; padding-top: 1mm; font-size: 7.4pt; }
 
   /* Pie repetido en cada página: el documento puede pasar de una hoja. */
   .pie {
@@ -201,12 +199,6 @@
     Documento interno de venta. Para efectos tributarios solicite su boleta o factura electrónica.
     {% endif %}
   </div>
-
-  {% if es_cotizacion %}
-  <div class="firma">
-    <div class="linea">Firma de conformidad del cliente</div>
-  </div>
-  {% endif %}
 
   <div class="pie">
     <span>{{ empresa.razon_social }} · RUC {{ empresa.ruc }}</span>

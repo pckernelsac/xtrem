@@ -15,14 +15,11 @@ from zoneinfo import ZoneInfo
 
 import qrcode
 from jinja2 import Environment, FileSystemLoader, select_autoescape
-from PIL import Image
 from weasyprint import HTML
 from weasyprint.formatting_structure import boxes
 
 from app.core.config import settings
 from app.models.ficha import ETIQUETAS_ESTADO, ETIQUETAS_SERVICIO, Ficha
-
-PREFIJO_PNG = "data:image/png;base64,"
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 TEMPLATES_DIR = BASE_DIR / "templates"
@@ -151,30 +148,10 @@ def _contexto(ficha: Ficha) -> dict[str, object]:
     }
 
 
-def _firma_utilizable(data_url: str | None) -> str | None:
-    """Descarta una firma que no se pueda decodificar.
-
-    La validación al guardar ya rechaza PNG inválidos, pero un registro viejo
-    o corrupto no debe impedir imprimir la ficha: es preferible un PDF sin el
-    trazo que un 500 que deja al taller sin documento de entrega.
-    """
-    if not data_url or not data_url.startswith(PREFIJO_PNG):
-        return None
-    try:
-        crudo = base64.b64decode(data_url[len(PREFIJO_PNG) :], validate=True)
-        with Image.open(BytesIO(crudo)) as img:
-            img.load()
-    except Exception:
-        return None
-    return data_url
-
-
 def render_ficha_pdf(
     ficha: Ficha, url_publica: str | None = None, publico: bool = False
 ) -> bytes:
     contexto = _contexto(ficha)
-    contexto["firma_cliente"] = _firma_utilizable(ficha.firma_cliente)
-    contexto["firma_tecnico"] = _firma_utilizable(ficha.firma_tecnico)
     contexto["qr"] = _qr_data_url(url_publica) if url_publica else None
     # Se imprime junto al QR por si la cámara no lo lee: el cliente lo dicta.
     contexto["codigo_publico"] = ficha.codigo_publico if url_publica else None
@@ -253,8 +230,6 @@ def render_ficha_ticket(
                 }
                 for r in ficha.repuestos
             ],
-            "firma_cliente": _firma_utilizable(ficha.firma_cliente),
-            "firma_tecnico": _firma_utilizable(ficha.firma_tecnico),
             "qr": _qr_data_url(url_publica) if url_publica else None,
             # Se imprime bajo el QR: si la cámara no lee el código (papel
             # arrugado, poca luz), el cliente puede dictarlo por teléfono.

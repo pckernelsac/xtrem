@@ -28,7 +28,7 @@ TAGS = [
     {"name": "roles", "description": "Roles y matriz de permisos."},
     {"name": "clientes", "description": "Directorio de clientes."},
     {"name": "bicicletas", "description": "Bicicletas y su historial."},
-    {"name": "fichas", "description": "Órdenes de taller, PDF, ticket térmico y firmas."},
+    {"name": "fichas", "description": "Órdenes de taller, PDF y ticket térmico."},
     {"name": "inventario", "description": "Productos, categorías, kardex e importación."},
     {"name": "ventas", "description": "Ventas, cotizaciones y su ciclo de vida."},
     {"name": "caja", "description": "Apertura, movimientos y arqueo de caja."},

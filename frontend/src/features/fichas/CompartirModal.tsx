@@ -21,12 +21,12 @@ export function CompartirModal({
   telefonoCliente: string | null
 }) {
   const [telefono, setTelefono] = useState("")
-  const [copiado, setCopiado] = useState(false)
+  const [copiado, setCopiado] = useState<"enlace" | "mensaje" | null>(null)
 
   useEffect(() => {
     if (open) {
       setTelefono(telefonoCliente ?? "")
-      setCopiado(false)
+      setCopiado(null)
     }
   }, [open, telefonoCliente])
 
@@ -41,11 +41,11 @@ export function CompartirModal({
 
   const datos = generar.data
 
-  const copiar = async () => {
+  const copiar = async (que: "enlace" | "mensaje") => {
     if (!datos) return
-    await navigator.clipboard.writeText(datos.url_pdf)
-    setCopiado(true)
-    setTimeout(() => setCopiado(false), 2000)
+    await navigator.clipboard.writeText(que === "enlace" ? datos.url_pdf : datos.mensaje)
+    setCopiado(que)
+    setTimeout(() => setCopiado(null), 2000)
   }
 
   return (
@@ -93,11 +93,31 @@ export function CompartirModal({
             <Textarea rows={12} readOnly value={datos.mensaje} className="text-xs" />
           </Field>
 
+          {/* Abrir WhatsApp lleva el texto en el propio enlace, y su manejador
+              puede estropear los emojis al decodificarlo. Copiado y pegado el
+              mensaje llega intacto, así que se ofrecen las dos vías. */}
+          <Button
+            variant="secondary"
+            onClick={() => copiar("mensaje")}
+            className="mt-2 w-full"
+          >
+            {copiado === "mensaje" ? (
+              <Check className="h-4 w-4 text-state-success" />
+            ) : (
+              <Copy className="h-4 w-4" />
+            )}
+            {copiado === "mensaje" ? "Mensaje copiado" : "Copiar mensaje"}
+          </Button>
+
           <div className="mt-3 flex items-center gap-2">
             <Input readOnly value={datos.url_pdf} className="text-xs" />
-            <Button variant="secondary" onClick={copiar} className="shrink-0">
-              {copiado ? <Check className="h-4 w-4 text-state-success" /> : <Copy className="h-4 w-4" />}
-              {copiado ? "Copiado" : "Copiar"}
+            <Button variant="secondary" onClick={() => copiar("enlace")} className="shrink-0">
+              {copiado === "enlace" ? (
+                <Check className="h-4 w-4 text-state-success" />
+              ) : (
+                <Copy className="h-4 w-4" />
+              )}
+              {copiado === "enlace" ? "Copiado" : "Copiar"}
             </Button>
           </div>
 

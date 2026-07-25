@@ -19,7 +19,12 @@ from weasyprint import HTML
 from weasyprint.formatting_structure import boxes
 
 from app.core.config import settings
-from app.models.ficha import ETIQUETAS_ESTADO, ETIQUETAS_SERVICIO, Ficha
+from app.models.ficha import (
+    ETIQUETAS_ESTADO,
+    ETIQUETAS_SERVICIO,
+    SERVICIOS_VIGENTES,
+    Ficha,
+)
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 TEMPLATES_DIR = BASE_DIR / "templates"
@@ -93,14 +98,8 @@ def _contexto(ficha: Ficha) -> dict[str, object]:
     marcados = set(ficha.servicios or [])
 
     # El orden de las dos columnas replica el de la ficha impresa.
-    col1 = [
-        "MANTENIMIENTO_GENERAL",
-        "MANTENIMIENTO_COMPLETO",
-        "AJUSTE_FRENOS",
-        "AJUSTE_CAMBIOS",
-        "LIMPIEZA_LUBRICACION",
-    ]
-    col2 = ["CAMBIO_COMPONENTES", "ALINEACION_RUEDAS", "REVISION_SUSPENSION"]
+    col1 = SERVICIOS_VIGENTES[:4]
+    col2 = SERVICIOS_VIGENTES[4:]
 
     def _items(codigos: list[str]) -> list[dict[str, object]]:
         return [
@@ -110,6 +109,15 @@ def _contexto(ficha: Ficha) -> dict[str, object]:
             }
             for c in codigos
         ]
+
+    # Una ficha anterior al cambio de checklist puede tener marcados servicios
+    # que ya no están en las columnas: se añaden al pie para que el PDF no
+    # calle lo que se pidió en su día.
+    retirados = [
+        {"label": ETIQUETAS_SERVICIO.get(c, c).upper(), "marcado": True}
+        for c in sorted(marcados)
+        if c not in SERVICIOS_VIGENTES
+    ]
 
     filas = [
         {
@@ -134,7 +142,7 @@ def _contexto(ficha: Ficha) -> dict[str, object]:
         "recepcion": _partes_fecha(ficha.fecha_recepcion),
         "entrega": _partes_fecha(ficha.fecha_entrega),
         "servicios_col1": _items(col1),
-        "servicios_col2": _items(col2),
+        "servicios_col2": _items(col2) + retirados,
         "filas_repuestos": filas,
         "total_repuestos": _monto(ficha.total_repuestos),
         "costo_servicio": _monto(ficha.costo_servicio),

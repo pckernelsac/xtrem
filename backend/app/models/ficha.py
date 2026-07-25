@@ -49,9 +49,24 @@ ESTADOS_FINALES = {EstadoFicha.ENTREGADA, EstadoFicha.CANCELADA}
 
 
 class ServicioSolicitado(str, enum.Enum):
-    """Checklist de la ficha física. El texto libre va en `servicio_otro`."""
+    """Checklist de la ficha física. El texto libre va en `servicio_otro`.
 
+    Los códigos retirados se siguen aceptando: `fichas.servicios` es JSONB y
+    las fichas antiguas los tienen guardados; sacarlos del enum haría que
+    editar una de esas fichas fallara al reenviar sus propios servicios.
+    """
+
+    # --- Checklist vigente (25-jul-2026) ---
     MANTENIMIENTO_GENERAL = "MANTENIMIENTO_GENERAL"
+    MANTENIMIENTO_PREVENTIVO = "MANTENIMIENTO_PREVENTIVO"
+    MANTENIMIENTO_BASICO = "MANTENIMIENTO_BASICO"
+    SINCRONIZACION_FRENOS = "SINCRONIZACION_FRENOS"
+    SINCRONIZACION_CAMBIOS = "SINCRONIZACION_CAMBIOS"
+    PURGADO_FRENOS = "PURGADO_FRENOS"
+    ALINEAMIENTO_ARO = "ALINEAMIENTO_ARO"
+    LIMPIEZA_ENGRASE = "LIMPIEZA_ENGRASE"
+
+    # --- Retirados: ya no se ofrecen, sólo sobreviven en fichas anteriores ---
     MANTENIMIENTO_COMPLETO = "MANTENIMIENTO_COMPLETO"
     AJUSTE_FRENOS = "AJUSTE_FRENOS"
     AJUSTE_CAMBIOS = "AJUSTE_CAMBIOS"
@@ -61,9 +76,29 @@ class ServicioSolicitado(str, enum.Enum):
     REVISION_SUSPENSION = "REVISION_SUSPENSION"
 
 
-#: Etiquetas tal como aparecen impresas en la ficha.
+#: Los ocho del checklist actual, en el orden en que se imprimen.
+SERVICIOS_VIGENTES: list[str] = [
+    "MANTENIMIENTO_GENERAL",
+    "MANTENIMIENTO_PREVENTIVO",
+    "MANTENIMIENTO_BASICO",
+    "SINCRONIZACION_FRENOS",
+    "SINCRONIZACION_CAMBIOS",
+    "PURGADO_FRENOS",
+    "ALINEAMIENTO_ARO",
+    "LIMPIEZA_ENGRASE",
+]
+
+#: Etiquetas tal como aparecen impresas en la ficha. Incluye las retiradas
+#: para que una ficha antigua siga diciendo lo que se marcó en su día.
 ETIQUETAS_SERVICIO: dict[str, str] = {
     "MANTENIMIENTO_GENERAL": "Mantenimiento general",
+    "MANTENIMIENTO_PREVENTIVO": "Mantenimiento preventivo",
+    "MANTENIMIENTO_BASICO": "Mantenimiento básico",
+    "SINCRONIZACION_FRENOS": "Sincronización de frenos",
+    "SINCRONIZACION_CAMBIOS": "Sincronización de cambios",
+    "PURGADO_FRENOS": "Purgado de frenos",
+    "ALINEAMIENTO_ARO": "Alineamiento de aro",
+    "LIMPIEZA_ENGRASE": "Limpieza y engrase",
     "MANTENIMIENTO_COMPLETO": "Mantenimiento completo",
     "AJUSTE_FRENOS": "Ajuste de frenos",
     "AJUSTE_CAMBIOS": "Ajuste de cambios",

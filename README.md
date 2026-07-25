@@ -129,6 +129,13 @@ Lista para entregar → Entregada. `Entregada` y `Cancelada` son finales: la fic
 deja de admitir ediciones ni cambios de estado. Cada transición queda en
 `ficha_estados_log` con usuario, fecha y comentario.
 
+El **checklist de servicios** cambió el 25-jul-2026 a los ocho actuales
+(`SERVICIOS_VIGENTES` en `models/ficha.py`). Los códigos anteriores siguen en el
+enum a propósito: `fichas.servicios` es JSONB y las fichas viejas los tienen
+guardados, así que sacarlos del enum haría fallar la edición de esas fichas al
+reenviar sus propios servicios. No se ofrecen al crear, pero se muestran —en el
+formulario y en el PDF— cuando la ficha ya los traía.
+
 **Las firmas de conformidad se retiraron** (25-jul-2026): ya no se capturan en
 pantalla ni se imprimen en el PDF ni en el ticket, y marcar la entrega no exige
 firma alguna. Las columnas `firma_*` y `fecha_firma` siguen en `fichas` con lo

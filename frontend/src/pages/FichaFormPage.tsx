@@ -25,11 +25,13 @@ import type { Bicicleta, Cliente, Page } from "@/features/clientes/types"
 import { BuscarProducto } from "@/features/inventario/BuscarProducto"
 import { cantidad as fmtCantidad, type Producto as ProductoInv } from "@/features/inventario/types"
 import {
+  ETIQUETAS_RETIRADAS,
   SERVICIOS_COL1,
   SERVICIOS_COL2,
   soles,
   type FichaDetail,
-  type ServicioCodigo,
+  type ServicioGuardado,
+  type ServicioRetirado,
 } from "@/features/fichas/types"
 import { METODOS, type MetodoPago } from "@/features/ventas/types"
 
@@ -101,7 +103,7 @@ export default function FichaFormPage() {
   const [bicicletaId, setBicicletaId] = useState("")
   const [biciModalOpen, setBiciModalOpen] = useState(false)
   const [canal, setCanal] = useState("")
-  const [servicios, setServicios] = useState<Set<ServicioCodigo>>(new Set())
+  const [servicios, setServicios] = useState<Set<ServicioGuardado>>(new Set())
   const [servicioOtro, setServicioOtro] = useState("")
   const [diagnostico, setDiagnostico] = useState("")
   const [trabajo, setTrabajo] = useState("")
@@ -211,7 +213,11 @@ export default function FichaFormPage() {
   const total = totalRepuestos + manoObra
   const saldo = total - (Number(adelanto) || 0)
 
-  const toggleServicio = (code: ServicioCodigo) => {
+  const retirados = [...servicios].filter(
+    (s): s is ServicioRetirado => s in ETIQUETAS_RETIRADAS,
+  )
+
+  const toggleServicio = (code: ServicioGuardado) => {
     setServicios((prev) => {
       const next = new Set(prev)
       next.has(code) ? next.delete(code) : next.add(code)
@@ -545,6 +551,34 @@ export default function FichaFormPage() {
               </label>
             ))}
           </div>
+
+          {/* Una ficha anterior al cambio de checklist puede traer servicios
+              que ya no se ofrecen. Se muestran igual: dejarlos invisibles pero
+              guardados sería mentir sobre lo que se pidió. */}
+          {retirados.length > 0 && (
+            <div className="mt-3 rounded-md border border-border bg-muted/30 p-3">
+              <p className="mb-2 text-xs text-muted-foreground">
+                Servicios de la lista anterior, marcados cuando se creó este servicio. Al
+                desmarcarlos ya no podrán volver a elegirse.
+              </p>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {retirados.map((code) => (
+                  <label
+                    key={code}
+                    className="flex cursor-pointer items-center gap-2.5 rounded-md px-2 py-1.5 text-sm hover:bg-accent"
+                  >
+                    <input
+                      type="checkbox"
+                      checked
+                      onChange={() => toggleServicio(code)}
+                      className="h-3.5 w-3.5 accent-[var(--primary)]"
+                    />
+                    {ETIQUETAS_RETIRADAS[code]}
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
 
           <Field label="Otro servicio" className="mt-3">
             <Input

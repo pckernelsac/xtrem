@@ -22,6 +22,26 @@ PIE = "_Av. San Carlos N° 177 - Huancayo_"
 #: Tienda virtual, tal como se invita a visitarla en el mensaje del servicio.
 TIENDA_URL = "https://zonaxtrema.pe"
 
+#: Primeras palabras que no son un nombre de persona: aparecen en boletas de
+#: mostrador ("CLIENTES VARIOS") y en razones sociales. Con ellas se saluda sin
+#: nombre en vez de soltar un "Hola Clientes".
+NO_ES_NOMBRE = {"CLIENTES", "CLIENTE", "VARIOS", "PUBLICO", "PÚBLICO", "SIN"}
+
+
+def nombre_de_pila(nombre_completo: str | None) -> str:
+    """Nombre con el que saludar al cliente, o "" si no hay uno utilizable.
+
+    Los nombres se guardan con el nombre de pila delante ("Rosa Quispe
+    Mamani"), así que basta la primera palabra. Ese orden lo respeta también la
+    consulta a RENIEC, que devuelve los apellidos primero y se reordena al
+    traerla; ver `services/consulta_documento.py`.
+    """
+    partes = (nombre_completo or "").split()
+    if not partes:
+        return ""
+    primera = partes[0]
+    return "" if primera.upper() in NO_ES_NOMBRE else primera.title()
+
 
 def normalizar_telefono(telefono: str | None) -> str | None:
     """Devuelve el número en formato internacional sin '+', o None si no sirve.
@@ -61,11 +81,12 @@ def mensaje_ficha(ficha: Ficha, url_pdf: str) -> str:
     en el chat: está completo al otro lado del enlace, que además se mantiene
     al día. Repetirlo aquí sólo alargaba el mensaje con datos que envejecen.
     """
-    nombre_corto = ficha.cliente.nombre.split()[0].title()
+    nombre_corto = nombre_de_pila(ficha.cliente.nombre)
+    saludo = f"¡Hola, {nombre_corto}!" if nombre_corto else "¡Hola!"
 
     return "\n".join(
         [
-            f"¡Hola, {nombre_corto}! 👋 En ZonaXtrema nos encanta acompañarte y "
+            f"{saludo} 👋 En ZonaXtrema nos encanta acompañarte y "
             "queremos agradecerte por confiar en nosotros el cuidado de tu "
             "engreída. 🚲✨",
             "",
@@ -88,8 +109,8 @@ def mensaje_comprobante(comprobante: ComprobanteElectronico, url_pdf: str) -> st
 
     # La denominación puede ser el nombre real del cliente o "CLIENTES VARIOS"
     # en una boleta de mostrador; en ese caso se evita un saludo con nombre.
-    primera = comprobante.cliente_denominacion.split()[0] if comprobante.cliente_denominacion else ""
-    saludo = f"Hola {primera.title()}, " if primera and primera.upper() != "CLIENTES" else "Hola, "
+    nombre = nombre_de_pila(comprobante.cliente_denominacion)
+    saludo = f"Hola {nombre}, " if nombre else "Hola, "
 
     lineas = [
         ENCABEZADO,

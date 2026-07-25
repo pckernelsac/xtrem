@@ -71,19 +71,28 @@ def _get(ruta: str) -> dict:
 
 
 def _nombre_persona(data: dict) -> str:
-    """Arma el nombre completo con los campos que existan."""
-    # Si viene un nombre completo directo, se usa.
-    for clave in ("nombre_completo", "nombreCompleto", "nombres_completos"):
-        if data.get(clave):
-            return str(data[clave]).strip()
+    """Arma el nombre completo con los campos que existan.
 
+    El orden es *nombres primero* ("Rosa Quispe Mamani"), no el del padrón
+    ("QUISPE MAMANI ROSA"): así el nombre de pila queda al inicio y los saludos
+    al cliente —WhatsApp, sobre todo— dicen el nombre y no el apellido.
+    """
     nombres = data.get("nombres") or data.get("nombre") or ""
     ap_paterno = data.get("apellido_paterno") or data.get("apellidoPaterno") or ""
     ap_materno = data.get("apellido_materno") or data.get("apellidoMaterno") or ""
 
-    partes = [ap_paterno, ap_materno, nombres]
+    partes = [nombres, ap_paterno, ap_materno]
     completo = " ".join(p.strip() for p in partes if p and p.strip())
-    return completo or str(nombres).strip()
+    if completo:
+        return completo
+
+    # Sin campos separados sólo queda el nombre completo tal como lo dé el
+    # padrón, que sí viene con los apellidos delante.
+    for clave in ("nombre_completo", "nombreCompleto", "nombres_completos"):
+        if data.get(clave):
+            return str(data[clave]).strip()
+
+    return ""
 
 
 def consultar_dni(dni: str) -> dict:

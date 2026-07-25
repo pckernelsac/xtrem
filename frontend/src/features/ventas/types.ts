@@ -40,6 +40,7 @@ export type ItemVenta = {
     stock_actual: string
   } | null
   descripcion: string
+  detalle: string | null
   cantidad: string
   precio_unitario: string
   descuento: string

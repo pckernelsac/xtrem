@@ -12,6 +12,8 @@ from app.models.venta import EstadoVenta, TipoVenta
 class ItemIn(BaseModel):
     producto_id: uuid.UUID | None = None
     descripcion: str = Field(min_length=1, max_length=200)
+    #: Detalle libre opcional que se imprime bajo la descripción y va al comprobante.
+    detalle: str | None = Field(default=None, max_length=300)
     cantidad: Decimal = Field(default=Decimal("1"), gt=0, max_digits=12, decimal_places=3)
     precio_unitario: Decimal = Field(default=Decimal("0"), ge=0, max_digits=10, decimal_places=2)
     descuento: Decimal = Field(default=Decimal("0"), ge=0, max_digits=10, decimal_places=2)
@@ -81,6 +83,7 @@ class ItemOut(BaseModel):
     orden: int
     producto: ProductoBrief | None
     descripcion: str
+    detalle: str | None
     cantidad: Decimal
     precio_unitario: Decimal
     descuento: Decimal

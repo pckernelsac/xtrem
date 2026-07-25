@@ -60,6 +60,7 @@
   table.items td { padding: 1.6mm 2mm; border-bottom: .5pt solid #ddd; vertical-align: top; }
   table.items .num { text-align: right; }
   table.items .sku { color: #888; font-size: 7pt; }
+  table.items .detalle { color: #444; font-size: 7.4pt; white-space: pre-wrap; }
   table.items tr.vacia td { height: 6.4mm; }
 
   .cierre { display: flex; margin-top: 4mm; }
@@ -150,6 +151,7 @@
         <td>{{ l.cantidad }}</td>
         <td>
           {{ l.descripcion }}
+          {% if l.detalle %}<div class="detalle">{{ l.detalle }}</div>{% endif %}
           {% if l.sku %}<div class="sku">{{ l.sku }}</div>{% endif %}
         </td>
         <td class="num">{% if l.precio %}S/ {{ l.precio }}{% endif %}</td>

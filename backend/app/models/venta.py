@@ -166,6 +166,10 @@ class VentaItem(UUIDMixin, Base):
     producto: Mapped["Producto | None"] = relationship(lazy="joined")  # noqa: F821
 
     descripcion: Mapped[str] = mapped_column(String(200))
+    #: Detalle libre que el mostrador agrega a la línea (medidas, color,
+    #: número de serie, garantía…). Se imprime bajo la descripción y viaja al
+    #: comprobante electrónico.
+    detalle: Mapped[str | None] = mapped_column(String(300))
     cantidad: Mapped[Decimal] = mapped_column(Numeric(12, 3), default=Decimal("1"))
     precio_unitario: Mapped[Decimal] = mapped_column(Numeric(10, 2), default=Decimal("0.00"))
     #: Descuento por línea, en soles.

@@ -249,6 +249,7 @@ def reemplazar_items(db: Session, venta: Venta, lineas) -> None:
                 orden=i,
                 producto_id=linea.producto_id,
                 descripcion=linea.descripcion,
+                detalle=(getattr(linea, "detalle", None) or None),
                 cantidad=Decimal(str(linea.cantidad)),
                 precio_unitario=Decimal(str(linea.precio_unitario)),
                 descuento=Decimal(str(linea.descuento)),

@@ -68,6 +68,7 @@ def _lineas(venta: Venta) -> list[dict[str, str]]:
         {
             "cantidad": _cantidad(i.cantidad),
             "descripcion": i.descripcion,
+            "detalle": i.detalle or "",
             "sku": i.producto.sku if i.producto else "",
             "precio": _monto(i.precio_unitario),
             "descuento": _monto(i.descuento) if i.descuento > 0 else "",
@@ -104,7 +105,7 @@ def render_venta_pdf(venta: Venta) -> bytes:
     """Hoja A4, la que se entrega o se manda por correo."""
     contexto = _contexto(venta)
     filas = list(contexto["lineas"])  # type: ignore[arg-type]
-    vacia = {"cantidad": "", "descripcion": "", "sku": "", "precio": "", "descuento": "", "importe": ""}
+    vacia = {"cantidad": "", "descripcion": "", "detalle": "", "sku": "", "precio": "", "descuento": "", "importe": ""}
     filas += [vacia] * max(0, FILAS_MIN - len(filas))
     contexto["filas"] = filas
 

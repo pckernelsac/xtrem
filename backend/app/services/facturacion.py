@@ -120,12 +120,15 @@ def _construir_payload(venta: Venta, tipo: TipoComprobante, serie: str) -> dict:
     """
     items = []
     for it in venta.items:
+        # El detalle libre de la línea se anexa a la descripción: SUNAT no tiene
+        # un campo aparte, pero así queda impreso en el comprobante.
+        descripcion = f"{it.descripcion} - {it.detalle}" if it.detalle else it.descripcion
         # El descuento de línea del ERP está en soles; FactPro lo toma directo.
         items.append(
             {
                 "unidad": UNIDAD_POR_DEFECTO,
                 "codigo": it.producto.sku if it.producto else "",
-                "descripcion": it.descripcion,
+                "descripcion": descripcion,
                 "cantidad": float(it.cantidad),
                 "precio": float(it.precio_unitario),
                 "incluye_tax": True,

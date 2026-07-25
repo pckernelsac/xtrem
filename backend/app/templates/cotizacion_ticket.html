@@ -107,6 +107,7 @@
           <td class="qty">{{ l.cantidad }}</td>
           <td>
             {{ l.descripcion }}
+            {% if l.detalle %}<div class="detalle">{{ l.detalle }}</div>{% endif %}
             <div class="detalle">
               S/ {{ l.precio }} c/u{% if l.descuento %} · dscto S/ {{ l.descuento }}{% endif %}
             </div>

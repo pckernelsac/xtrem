@@ -253,6 +253,9 @@ export default function VentaDetailPage() {
                 <tr key={it.id} className="border-t border-border">
                   <td className="py-2">
                     {it.descripcion}
+                    {it.detalle && (
+                      <span className="block text-xs text-muted-foreground">{it.detalle}</span>
+                    )}
                     {it.producto && (
                       <span className="tabular block text-xs text-muted-foreground">
                         {it.producto.sku}

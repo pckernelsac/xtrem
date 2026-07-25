@@ -43,6 +43,9 @@ type Linea = {
   producto_id: string | null
   sku: string | null
   descripcion: string
+  /** Detalle libre opcional (medidas, color, garantía…) que se imprime bajo
+   *  la descripción y viaja al comprobante. */
+  detalle: string
   cantidad: string
   precio_unitario: string
   descuento: string
@@ -203,6 +206,7 @@ export default function PuntoVentaPage() {
         producto_id: it.producto?.id ?? null,
         sku: it.producto?.sku ?? null,
         descripcion: it.descripcion,
+        detalle: it.detalle ?? "",
         cantidad: String(Number(it.cantidad)),
         precio_unitario: String(Number(it.precio_unitario)),
         descuento: String(Number(it.descuento)),
@@ -237,6 +241,7 @@ export default function PuntoVentaPage() {
           producto_id: p.id,
           sku: p.sku,
           descripcion: p.nombre,
+          detalle: "",
           cantidad: "1",
           precio_unitario: String(Number(p.precio_venta)),
           descuento: "0",
@@ -316,6 +321,7 @@ export default function PuntoVentaPage() {
     lineas.map((l) => ({
       producto_id: l.producto_id,
       descripcion: l.descripcion,
+      detalle: l.detalle.trim() || null,
       cantidad: Number(l.cantidad) || 1,
       precio_unitario: Number(l.precio_unitario) || 0,
       descuento: Number(l.descuento) || 0,
@@ -773,6 +779,16 @@ export default function PuntoVentaPage() {
                       </button>
                     </div>
 
+                    {/* Detalle libre: se imprime bajo la descripción y va al comprobante. */}
+                    <Input
+                      value={l.detalle}
+                      onChange={(e) => setLinea(i, "detalle", e.target.value)}
+                      placeholder="Detalle (opcional): medidas, color, garantía…"
+                      className="mt-1.5 h-8 text-sm"
+                      aria-label="Detalle del producto"
+                      maxLength={300}
+                    />
+
                     <div className="mt-2 flex items-center gap-2">
                       <div className="flex items-center rounded-md border border-border">
                         <button
@@ -838,6 +854,7 @@ export default function PuntoVentaPage() {
                     producto_id: null,
                     sku: null,
                     descripcion: "",
+                    detalle: "",
                     cantidad: "1",
                     precio_unitario: "",
                     descuento: "0",

@@ -53,7 +53,7 @@ def _items_desde_ficha(ficha: Ficha) -> list[VentaItem]:
             VentaItem(
                 orden=orden,
                 producto_id=None,
-                descripcion="Servicio / mano de obra",
+                descripcion="Servicio solicitado",
                 cantidad=Decimal("1"),
                 precio_unitario=ficha.costo_servicio,
                 descuento=CERO,

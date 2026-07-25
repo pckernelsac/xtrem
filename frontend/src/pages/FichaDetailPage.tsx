@@ -409,7 +409,7 @@ export default function FichaDetailPage() {
             <dd className="tabular mt-0.5 text-sm">{soles(f.total_repuestos)}</dd>
           </div>
           <div>
-            <dt className="text-xs text-muted-foreground">Mano de obra</dt>
+            <dt className="text-xs text-muted-foreground">Servicio solicitado</dt>
             <dd className="tabular mt-0.5 text-sm">{soles(f.costo_servicio)}</dd>
           </div>
           <div>

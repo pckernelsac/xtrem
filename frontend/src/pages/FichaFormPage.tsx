@@ -635,7 +635,7 @@ export default function FichaFormPage() {
         <Seccion titulo="Cobro">
           <div className="grid gap-4 sm:grid-cols-2">
             <Field
-              label="Costo de servicio / mano de obra"
+              label="Costo del servicio solicitado"
               hint="Aparte de los repuestos. Puede ser el único cobro de un servicio sin piezas."
             >
               <Input

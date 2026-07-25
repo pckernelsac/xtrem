@@ -10,7 +10,7 @@ export const TIPOS: { value: TipoItem; label: string; ayuda: string }[] = [
   {
     value: "SERVICIO",
     label: "Servicio",
-    ayuda: "Mano de obra o trabajo de taller: se vende y cotiza, pero no tiene stock.",
+    ayuda: "Servicio o trabajo de taller: se vende y cotiza, pero no tiene stock.",
   },
 ]
 export type TipoMovimiento = "ENTRADA" | "SALIDA" | "AJUSTE"

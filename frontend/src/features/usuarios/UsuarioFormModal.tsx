@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { Loader2 } from "lucide-react"
+import { Loader2, Search } from "lucide-react"
 
 import { api, API_PREFIX, apiErrorMessage } from "@/lib/api"
 import { Button, Field, FormError, Input, Select } from "@/components/ui/Form"
@@ -86,6 +86,34 @@ export function UsuarioFormModal({
   const set = <K extends keyof FormState>(k: K, v: FormState[K]) =>
     setForm((f) => ({ ...f, [k]: v }))
 
+  // ¿Está configurada la consulta RENIEC? Si no, no se ofrece el botón.
+  const consultaDisponible = useQuery({
+    queryKey: ["clientes", "consulta-disponible"],
+    queryFn: async () =>
+      (
+        await api.get<{ disponible: boolean }>(
+          `${API_PREFIX}/clientes/consulta-documento/disponible`,
+        )
+      ).data.disponible,
+    enabled: open,
+    staleTime: 5 * 60_000,
+  })
+
+  const consultarDni = useMutation({
+    mutationFn: async () => {
+      const { data } = await api.get<{ nombre: string }>(
+        `${API_PREFIX}/clientes/consulta-documento`,
+        { params: { tipo: "DNI", numero: form.dni.trim() } },
+      )
+      return data
+    },
+    // El nombre llega de RENIEC tal cual figura en el padrón; queda editable
+    // por si la cuenta se prefiere a nombre corto.
+    onSuccess: (data) => set("full_name", data.nombre),
+  })
+
+  const dniCompleto = /^\d{8}$/.test(form.dni.trim())
+
   const guardar = useMutation({
     mutationFn: async () => {
       const base = {
@@ -137,8 +165,67 @@ export function UsuarioFormModal({
         }}
         className="space-y-4"
       >
+        {/* El DNI va primero: se escribe, se busca en RENIEC y el nombre
+            aparece debajo ya rellenado, como en el alta de clientes. */}
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Nombre completo" required>
+          <Field
+            label="DNI"
+            hint={consultaDisponible.data ? "8 dígitos · busca el nombre en RENIEC" : undefined}
+          >
+            <div className="flex gap-2">
+              <Input
+                value={form.dni}
+                onChange={(e) => set("dni", e.target.value.replace(/\D/g, ""))}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && dniCompleto) {
+                    e.preventDefault()
+                    consultarDni.mutate()
+                  }
+                }}
+                placeholder="43186966"
+                inputMode="numeric"
+                maxLength={8}
+              />
+              {consultaDisponible.data && (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  className="shrink-0"
+                  disabled={!dniCompleto || consultarDni.isPending}
+                  onClick={() => consultarDni.mutate()}
+                  title={dniCompleto ? "Buscar el nombre en RENIEC" : "Ingresa el DNI completo"}
+                >
+                  {consultarDni.isPending ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Search className="h-4 w-4" />
+                  )}
+                  Buscar
+                </Button>
+              )}
+            </div>
+          </Field>
+          <Field label="Teléfono">
+            <Input
+              value={form.phone}
+              onChange={(e) => set("phone", e.target.value)}
+              placeholder="969127107"
+            />
+          </Field>
+        </div>
+
+        {consultarDni.isError && (
+          <p className="-mt-2 text-xs text-state-danger">
+            {apiErrorMessage(consultarDni.error, "No se pudo consultar el DNI")}
+          </p>
+        )}
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field
+            label="Nombre completo"
+            required
+            hint={consultarDni.isSuccess ? "Traído de RENIEC; puedes corregirlo" : undefined}
+          >
             <Input
               required
               minLength={2}
@@ -158,41 +245,21 @@ export function UsuarioFormModal({
           </Field>
         </div>
 
-        <div className="grid gap-4 sm:grid-cols-3">
-          <Field label="DNI">
-            <Input
-              value={form.dni}
-              onChange={(e) => set("dni", e.target.value)}
-              placeholder="43186966"
-            />
-          </Field>
-          <Field label="Teléfono">
-            <Input
-              value={form.phone}
-              onChange={(e) => set("phone", e.target.value)}
-              placeholder="969127107"
-            />
-          </Field>
-          <Field
-            label="Rol"
+        <Field label="Rol" required hint={esYo ? "No puedes cambiar tu propio rol" : undefined}>
+          <Select
             required
-            hint={esYo ? "No puedes cambiar tu propio rol" : undefined}
+            value={form.role_id}
+            disabled={esYo}
+            onChange={(e) => set("role_id", e.target.value)}
           >
-            <Select
-              required
-              value={form.role_id}
-              disabled={esYo}
-              onChange={(e) => set("role_id", e.target.value)}
-            >
-              <option value="">Elige un rol</option>
-              {(roles.data ?? []).map((r) => (
-                <option key={r.id} value={r.id}>
-                  {r.name}
-                </option>
-              ))}
-            </Select>
-          </Field>
-        </div>
+            <option value="">Elige un rol</option>
+            {(roles.data ?? []).map((r) => (
+              <option key={r.id} value={r.id}>
+                {r.name}
+              </option>
+            ))}
+          </Select>
+        </Field>
 
         <Field
           label={editando ? "Nueva contraseña" : "Contraseña"}

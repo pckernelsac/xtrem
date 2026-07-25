@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
-from app.api.deps import require_permission
+from app.api.deps import require_any_permission, require_permission
 from app.core.config import settings
 from app.db.session import get_db
 from app.models.bicicleta import Bicicleta
@@ -55,7 +55,7 @@ def _assert_documento_libre(
 
 @router.get("/consulta-documento/disponible")
 def consulta_disponible(
-    _: User = Depends(require_permission("clientes.ver")),
+    _: User = Depends(require_any_permission("clientes.ver", "usuarios.ver")),
 ) -> dict[str, bool]:
     """Indica si el autocompletado por DNI/RUC está configurado (hay token)."""
     return {"disponible": settings.consulta_documento_disponible}
@@ -65,7 +65,9 @@ def consulta_disponible(
 def consulta_documento(
     tipo: TipoDocumento = Query(description="DNI o RUC"),
     numero: str = Query(min_length=8, max_length=11),
-    _: User = Depends(require_permission("clientes.crear")),
+    # El padrón no es exclusivo de clientes: el alta de usuarios también
+    # rellena el nombre por DNI, y no debería exigir permisos de clientes.
+    _: User = Depends(require_any_permission("clientes.crear", "usuarios.crear")),
 ) -> dict:
     """Trae el nombre desde RENIEC (DNI) o la razón social desde SUNAT (RUC).
 

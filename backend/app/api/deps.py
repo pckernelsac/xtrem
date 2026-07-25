@@ -65,3 +65,22 @@ def require_permission(*codes: str):
         return user
 
     return dependency
+
+
+def require_any_permission(*codes: str):
+    """Exige AL MENOS UNO de los permisos indicados.
+
+    Para lo que sirve a varios módulos a la vez, como la consulta al padrón:
+    exigir el permiso de un módulo dejaría fuera a quien la necesita desde
+    otro.
+    """
+
+    def dependency(user: User = Depends(get_current_user)) -> User:
+        if not set(codes) & set(user.permission_codes):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Permiso requerido: {' o '.join(codes)}",
+            )
+        return user
+
+    return dependency

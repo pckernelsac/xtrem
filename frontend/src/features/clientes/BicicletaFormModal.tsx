@@ -1,11 +1,17 @@
 import { useEffect, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { Loader2 } from "lucide-react"
+import { Check, Loader2, X } from "lucide-react"
 
 import { api, API_PREFIX, apiErrorMessage } from "@/lib/api"
 import { Button, Field, FormError, Input, Select, Textarea } from "@/components/ui/Form"
 import { Modal } from "@/components/ui/Modal"
-import { TIPOS_BICICLETA, type Bicicleta, type Cliente, type Page, type TipoBicicleta } from "./types"
+import { BuscarCliente } from "./BuscarCliente"
+import {
+  TIPOS_BICICLETA,
+  type Bicicleta,
+  type ClienteBrief,
+  type TipoBicicleta,
+} from "./types"
 
 type FormState = {
   cliente_id: string
@@ -50,22 +56,32 @@ export function BicicletaFormModal({
 }) {
   const qc = useQueryClient()
   const [form, setForm] = useState<FormState>(VACIO)
+  //: Dueño elegido, para pintarlo sin volver a consultar. Al crear desde la
+  //: ficha de un cliente sólo llega su id, y ese caso lo resuelve `duenoQ`.
+  const [dueno, setDueno] = useState<Pick<
+    ClienteBrief,
+    "id" | "nombre" | "tipo_documento" | "numero_documento"
+  > | null>(null)
 
-  // Sólo se listan clientes activos: no tiene sentido dar de alta una bici
-  // a nombre de alguien dado de baja.
-  const clientesQ = useQuery({
-    queryKey: ["clientes", "activos-select"],
+  // El dueño viene impuesto cuando la bici se registra desde la ficha de un
+  // cliente o desde un servicio: cambiarlo ahí crearía la bici a nombre de
+  // otro y rompería lo que el formulario de origen espera.
+  const duenoFijo = Boolean(clienteId) && !bicicleta
+
+  const duenoQ = useQuery({
+    queryKey: ["clientes", clienteId],
     queryFn: async () =>
-      (
-        await api.get<Page<Cliente>>(`${API_PREFIX}/clientes`, {
-          params: { is_active: true, page_size: 200 },
-        })
-      ).data,
-    enabled: open,
+      (await api.get<ClienteBrief>(`${API_PREFIX}/clientes/${clienteId}`)).data,
+    enabled: open && duenoFijo,
   })
 
   useEffect(() => {
+    if (duenoQ.data) setDueno(duenoQ.data)
+  }, [duenoQ.data])
+
+  useEffect(() => {
     if (!open) return
+    setDueno(bicicleta?.cliente ?? null)
     setForm(
       bicicleta
         ? {
@@ -130,22 +146,55 @@ export function BicicletaFormModal({
         }}
         className="space-y-4"
       >
-        <Field label="Cliente (dueño)" required>
-          <Select
-            required
-            value={form.cliente_id}
-            onChange={(e) => set("cliente_id", e.target.value)}
-            disabled={clientesQ.isLoading}
-          >
-            <option value="">
-              {clientesQ.isLoading ? "Cargando clientes..." : "Selecciona un cliente"}
-            </option>
-            {(clientesQ.data?.items ?? []).map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.nombre} · {c.tipo_documento} {c.numero_documento}
-              </option>
-            ))}
-          </Select>
+        <Field
+          label="Cliente (dueño)"
+          required
+          hint={
+            dueno || duenoFijo
+              ? undefined
+              : "Búscalo por nombre o documento; si no está registrado, se da de alta al vuelo."
+          }
+        >
+          {dueno ? (
+            <div className="rounded-lg border border-state-success/30 bg-state-success/5 px-3 py-2.5">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="flex items-center gap-1.5 text-sm font-medium">
+                    <Check className="h-3.5 w-3.5 shrink-0 text-state-success" />
+                    <span className="truncate">{dueno.nombre}</span>
+                  </p>
+                  <p className="tabular mt-0.5 text-xs text-muted-foreground">
+                    {dueno.tipo_documento} {dueno.numero_documento}
+                  </p>
+                </div>
+                {!duenoFijo && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDueno(null)
+                      set("cliente_id", "")
+                    }}
+                    className="shrink-0 rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
+                    aria-label="Cambiar de dueño"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                )}
+              </div>
+            </div>
+          ) : duenoFijo ? (
+            <div className="rounded-lg border border-border px-3 py-2.5 text-sm text-muted-foreground">
+              Cargando el cliente…
+            </div>
+          ) : (
+            <BuscarCliente
+              onSeleccionar={(c) => {
+                setDueno(c)
+                set("cliente_id", c.id)
+              }}
+              placeholder="Buscar el dueño por nombre o documento"
+            />
+          )}
         </Field>
 
         <div className="grid gap-4 sm:grid-cols-2">
@@ -240,7 +289,9 @@ export function BicicletaFormModal({
           <Button type="button" variant="secondary" onClick={onClose}>
             Cancelar
           </Button>
-          <Button type="submit" disabled={guardar.isPending}>
+          {/* El dueño ya no es un <select required>, así que el navegador no
+              lo exige por su cuenta: sin cliente no hay bici que registrar. */}
+          <Button type="submit" disabled={guardar.isPending || !form.cliente_id}>
             {guardar.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
             {bicicleta ? "Guardar cambios" : "Registrar bicicleta"}
           </Button>

@@ -114,7 +114,14 @@ def mensaje_comprobante(comprobante: ComprobanteElectronico, url_pdf: str) -> st
 
 
 def enlace_whatsapp(telefono: str | None, mensaje: str) -> str:
-    """Enlace wa.me. Sin teléfono devuelve el enlace de 'elegir contacto'."""
+    """Enlace de 'click to chat'. Sin teléfono deja elegir el contacto.
+
+    Se usa `api.whatsapp.com/send` y no el acortador `wa.me`: el salto de
+    redirección de wa.me estropea los caracteres fuera del plano básico —los
+    emojis llegaban al chat como el carácter de reemplazo mientras que las
+    tildes, que ocupan menos, pasaban intactas.
+    """
     texto = quote(mensaje, safe="")
     numero = normalizar_telefono(telefono)
-    return f"https://wa.me/{numero}?text={texto}" if numero else f"https://wa.me/?text={texto}"
+    base = "https://api.whatsapp.com/send"
+    return f"{base}?phone={numero}&text={texto}" if numero else f"{base}?text={texto}"

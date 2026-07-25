@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useNavigate, useParams } from "react-router-dom"
-import { ArrowLeft, Loader2, Plus, Trash2 } from "lucide-react"
+import { ArrowLeft, Check, Loader2, Plus, Search, Trash2, UserPlus, X } from "lucide-react"
 
 import { api, API_PREFIX, apiErrorMessage } from "@/lib/api"
 import { Button, Field, FormError, Input, Select, Textarea } from "@/components/ui/Form"
@@ -9,6 +9,7 @@ import { PageHeader } from "@/components/ui/PageHeader"
 import { SkeletonCard } from "@/components/ui/skeleton"
 import { BicicletaFormModal } from "@/features/clientes/BicicletaFormModal"
 import { BuscarClienteDocumento } from "@/features/clientes/BuscarClienteDocumento"
+import { ClienteFormModal } from "@/features/clientes/ClienteFormModal"
 import type { Bicicleta, Cliente, Page } from "@/features/clientes/types"
 import { cantidad as fmtCantidad, type Producto as ProductoInv } from "@/features/inventario/types"
 import {
@@ -37,6 +38,15 @@ const FILA_VACIA: FilaRepuesto = {
   producto_id: "",
 }
 
+/** Datos mínimos para mostrar el cliente elegido; los cubren por igual la
+ *  búsqueda por documento, la búsqueda por nombre y el alta desde la ficha. */
+type ClienteSel = {
+  id: string
+  nombre: string
+  tipo_documento: string
+  numero_documento: string
+}
+
 function Seccion({ titulo, children }: { titulo: string; children: React.ReactNode }) {
   return (
     <section className="rounded-lg border border-border bg-card p-5">
@@ -55,6 +65,11 @@ export default function FichaFormPage() {
   const qc = useQueryClient()
 
   const [clienteId, setClienteId] = useState("")
+  const [clienteSel, setClienteSel] = useState<ClienteSel | null>(null)
+  const [clienteBusqueda, setClienteBusqueda] = useState("")
+  const [clienteBusquedaDeb, setClienteBusquedaDeb] = useState("")
+  const [clienteSugOpen, setClienteSugOpen] = useState(false)
+  const [clienteModalOpen, setClienteModalOpen] = useState(false)
   const [bicicletaId, setBicicletaId] = useState("")
   const [biciModalOpen, setBiciModalOpen] = useState(false)
   const [canal, setCanal] = useState("")
@@ -76,15 +91,35 @@ export default function FichaFormPage() {
     enabled: editando,
   })
 
+  // Buscador de cliente por nombre/documento: el desplegable plano no escala
+  // cuando el directorio crece, así que se consulta al servidor con debounce.
+  useEffect(() => {
+    const t = setTimeout(() => setClienteBusquedaDeb(clienteBusqueda.trim()), 300)
+    return () => clearTimeout(t)
+  }, [clienteBusqueda])
+
   const clientesQ = useQuery({
-    queryKey: ["clientes", "activos-select"],
+    queryKey: ["clientes", "ficha-buscar", clienteBusquedaDeb],
     queryFn: async () =>
       (
         await api.get<Page<Cliente>>(`${API_PREFIX}/clientes`, {
-          params: { is_active: true, page_size: 200 },
+          params: { search: clienteBusquedaDeb, is_active: true, page_size: 8 },
         })
       ).data,
+    enabled: clienteBusquedaDeb.length >= 2,
   })
+
+  const clientesSug = clienteBusquedaDeb.length >= 2 ? (clientesQ.data?.items ?? []) : []
+  const mostrarClientesSug = clienteSugOpen && clienteBusquedaDeb.length >= 2
+
+  const elegirCliente = (c: ClienteSel | null) => {
+    setClienteSel(c)
+    setClienteId(c?.id ?? "")
+    // La bici depende del dueño: cambiar de cliente la invalida.
+    setBicicletaId("")
+    setClienteBusqueda("")
+    setClienteSugOpen(false)
+  }
 
   const productosQ = useQuery({
     queryKey: ["inventario", "productos", "select-ficha"],
@@ -113,6 +148,7 @@ export default function FichaFormPage() {
     const f = fichaQ.data
     if (!f) return
     setClienteId(f.cliente.id)
+    setClienteSel(f.cliente)
     setBicicletaId(f.bicicleta?.id ?? "")
     setCanal(f.canal_referencia ?? "")
     setServicios(new Set(f.servicios))
@@ -267,43 +303,112 @@ export default function FichaFormPage() {
         className="space-y-4"
       >
         <Seccion titulo="Cliente y bicicleta">
-          {/* Al recibir el servicio, lo primero que se pide es el documento del
-              dueño: se busca o se registra sin salir de la ficha. */}
-          {!editando && (
-            <Field
-              label="Buscar cliente por documento"
-              className="mb-4"
-              hint="Si no está registrado, se consulta RENIEC/SUNAT y se crea al momento"
-            >
-              <BuscarClienteDocumento
-                clienteId={clienteId}
-                onSeleccionar={(c) => {
-                  setClienteId(c?.id ?? "")
-                  // La bici depende del dueño: cambiar de cliente la invalida.
-                  setBicicletaId("")
-                }}
-              />
-            </Field>
-          )}
-
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label={editando ? "Cliente" : "…o elígelo de la lista"} required>
-              <Select
-                required
-                value={clienteId}
-                disabled={editando}
-                onChange={(e) => {
-                  setClienteId(e.target.value)
-                  setBicicletaId("")
-                }}
-              >
-                <option value="">Selecciona un cliente</option>
-                {(clientesQ.data?.items ?? []).map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.nombre} · {c.tipo_documento} {c.numero_documento}
-                  </option>
-                ))}
-              </Select>
+            <Field label="Cliente" required>
+              {editando ? (
+                // El cliente no se cambia después de crear la ficha.
+                <Input
+                  value={
+                    clienteSel
+                      ? `${clienteSel.nombre} · ${clienteSel.tipo_documento} ${clienteSel.numero_documento}`
+                      : ""
+                  }
+                  disabled
+                  readOnly
+                />
+              ) : clienteSel ? (
+                // Cliente elegido (por cualquier vía): "chip" con opción de quitarlo.
+                <div className="rounded-lg border border-state-success/30 bg-state-success/5 px-3 py-2.5">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="flex items-center gap-1.5 text-sm font-medium">
+                        <Check className="h-3.5 w-3.5 shrink-0 text-state-success" />
+                        <span className="truncate">{clienteSel.nombre}</span>
+                      </p>
+                      <p className="tabular mt-0.5 text-xs text-muted-foreground">
+                        {clienteSel.tipo_documento} {clienteSel.numero_documento}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => elegirCliente(null)}
+                      className="shrink-0 rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
+                      aria-label="Quitar cliente"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {/* Buscar por documento es la vía rápida (consulta RENIEC/SUNAT);
+                      debajo, la búsqueda por nombre y el alta al vuelo. */}
+                  <BuscarClienteDocumento clienteId={clienteId} onSeleccionar={elegirCliente} />
+
+                  <div className="relative">
+                    <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                    <input
+                      value={clienteBusqueda}
+                      onChange={(e) => {
+                        setClienteBusqueda(e.target.value)
+                        setClienteSugOpen(true)
+                      }}
+                      onFocus={() => setClienteSugOpen(true)}
+                      onBlur={() => setClienteSugOpen(false)}
+                      placeholder="Buscar cliente por nombre o documento"
+                      role="combobox"
+                      aria-expanded={mostrarClientesSug}
+                      aria-controls="sugerencias-clientes-ficha"
+                      aria-autocomplete="list"
+                      className="w-full rounded-md border border-border bg-background py-2 pl-8 pr-3 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                    />
+
+                    {mostrarClientesSug && (
+                      <ul
+                        id="sugerencias-clientes-ficha"
+                        role="listbox"
+                        className="absolute z-20 mt-1 max-h-64 w-full overflow-y-auto rounded-md border border-border bg-card shadow-lg"
+                      >
+                        {clientesSug.map((c) => (
+                          <li key={c.id} role="option" aria-selected={false}>
+                            <button
+                              type="button"
+                              onMouseDown={(e) => {
+                                e.preventDefault()
+                                elegirCliente(c)
+                              }}
+                              className="flex w-full flex-col items-start gap-0.5 px-3 py-2 text-left text-sm hover:bg-accent"
+                            >
+                              <span className="block max-w-full truncate font-medium">{c.nombre}</span>
+                              <span className="tabular block max-w-full truncate text-xs text-muted-foreground">
+                                {c.tipo_documento} {c.numero_documento}
+                                {c.telefono ? ` · ${c.telefono}` : ""}
+                              </span>
+                            </button>
+                          </li>
+                        ))}
+                        {clientesSug.length === 0 && (
+                          <li className="px-3 py-3 text-sm text-muted-foreground">
+                            {clientesQ.isFetching
+                              ? "Buscando…"
+                              : `Ningún cliente coincide con “${clienteBusquedaDeb}”`}
+                          </li>
+                        )}
+                      </ul>
+                    )}
+                  </div>
+
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    className="w-full"
+                    onClick={() => setClienteModalOpen(true)}
+                  >
+                    <UserPlus className="h-4 w-4" />
+                    Nuevo cliente
+                  </Button>
+                </div>
+              )}
             </Field>
 
             <Field
@@ -641,7 +746,7 @@ export default function FichaFormPage() {
           <Button type="button" variant="secondary" onClick={() => navigate(-1)}>
             Cancelar
           </Button>
-          <Button type="submit" disabled={guardar.isPending}>
+          <Button type="submit" disabled={guardar.isPending || (!editando && !clienteId)}>
             {guardar.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
             {editando ? "Guardar cambios" : "Crear servicio"}
           </Button>
@@ -654,6 +759,13 @@ export default function FichaFormPage() {
         onClose={() => setBiciModalOpen(false)}
         clienteId={clienteId}
         onCreated={(b) => setBicicletaId(b.id)}
+      />
+
+      {/* Alta de cliente sin salir de la ficha: al crearlo queda seleccionado. */}
+      <ClienteFormModal
+        open={clienteModalOpen}
+        onClose={() => setClienteModalOpen(false)}
+        onCreated={elegirCliente}
       />
     </div>
   )

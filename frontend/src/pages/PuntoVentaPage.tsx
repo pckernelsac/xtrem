@@ -23,7 +23,6 @@ import { Badge } from "@/components/ui/Badge"
 import { Button, Field, FormError, Input, Select, Textarea } from "@/components/ui/Form"
 import { PageHeader } from "@/components/ui/PageHeader"
 import { Paginacion } from "@/components/ui/Paginacion"
-import { BuscarClienteDocumento } from "@/features/clientes/BuscarClienteDocumento"
 import { ClienteFormModal } from "@/features/clientes/ClienteFormModal"
 import type { Cliente, Page } from "@/features/clientes/types"
 import {
@@ -667,10 +666,8 @@ export default function PuntoVentaPage() {
               </div>
             ) : (
               <div className="space-y-2">
-                {/* Buscar por documento es la vía rápida del mostrador (consulta
-                    RENIEC/SUNAT); debajo, la búsqueda por nombre y el alta. */}
-                <BuscarClienteDocumento clienteId={clienteId} onSeleccionar={elegirCliente} />
-
+                {/* El buscador cubre nombre y documento; para uno nuevo, el alta
+                    al vuelo, que ya consulta RENIEC/SUNAT por su cuenta. */}
                 <div className="relative">
                   <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                   <input

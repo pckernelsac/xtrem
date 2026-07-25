@@ -19,7 +19,6 @@ import { Button, Field, FormError, Input, Select, Textarea } from "@/components/
 import { PageHeader } from "@/components/ui/PageHeader"
 import { SkeletonCard } from "@/components/ui/skeleton"
 import { BicicletaFormModal } from "@/features/clientes/BicicletaFormModal"
-import { BuscarClienteDocumento } from "@/features/clientes/BuscarClienteDocumento"
 import { ClienteFormModal } from "@/features/clientes/ClienteFormModal"
 import type { Bicicleta, Cliente, Page } from "@/features/clientes/types"
 import { BuscarProducto } from "@/features/inventario/BuscarProducto"
@@ -403,10 +402,8 @@ export default function FichaFormPage() {
                 </div>
               ) : (
                 <div className="space-y-2">
-                  {/* Buscar por documento es la vía rápida (consulta RENIEC/SUNAT);
-                      debajo, la búsqueda por nombre y el alta al vuelo. */}
-                  <BuscarClienteDocumento clienteId={clienteId} onSeleccionar={elegirCliente} />
-
+                  {/* El buscador cubre nombre y documento; para uno nuevo, el alta
+                      al vuelo, que ya consulta RENIEC/SUNAT por su cuenta. */}
                   <div className="relative">
                     <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                     <input

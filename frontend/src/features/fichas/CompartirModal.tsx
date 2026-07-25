@@ -90,7 +90,7 @@ export function CompartirModal({
       ) : (
         <>
           <Field label="Mensaje que se enviará" className="mt-4">
-            <Textarea rows={9} readOnly value={datos.mensaje} className="text-xs" />
+            <Textarea rows={12} readOnly value={datos.mensaje} className="text-xs" />
           </Field>
 
           <div className="mt-3 flex items-center gap-2">

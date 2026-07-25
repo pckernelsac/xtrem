@@ -9,7 +9,7 @@ import re
 from urllib.parse import quote
 
 from app.models.comprobante import ETIQUETAS_TIPO_COMPROBANTE, ComprobanteElectronico
-from app.models.ficha import ETIQUETAS_ESTADO, Ficha
+from app.models.ficha import Ficha
 
 #: Perú. Los celulares son 9 dígitos y empiezan con 9.
 CODIGO_PAIS = "51"
@@ -18,6 +18,9 @@ LARGO_NACIONAL = 9
 #: Encabezado y pie comunes a todos los mensajes que salen al cliente.
 ENCABEZADO = "*ZONA XTREMA BIKES & COMPONENTES*"
 PIE = "_Av. San Carlos N° 177 - Huancayo_"
+
+#: Tienda virtual, tal como se invita a visitarla en el mensaje del servicio.
+TIENDA_URL = "https://zonaxtrema.pe"
 
 
 def normalizar_telefono(telefono: str | None) -> str | None:
@@ -52,34 +55,31 @@ def normalizar_telefono(telefono: str | None) -> str | None:
 
 
 def mensaje_ficha(ficha: Ficha, url_pdf: str) -> str:
-    """Mensaje que verá el cliente. Texto plano con formato de WhatsApp."""
-    bici = " ".join(p for p in [ficha.bicicleta.marca, ficha.bicicleta.modelo] if p)
-    estado = ETIQUETAS_ESTADO[ficha.estado.value]
+    """Mensaje que verá el cliente. Texto plano con formato de WhatsApp.
+
+    El detalle del servicio (número, estado, repuestos, garantía) ya no viaja
+    en el chat: está completo al otro lado del enlace, que además se mantiene
+    al día. Repetirlo aquí sólo alargaba el mensaje con datos que envejecen.
+    """
     nombre_corto = ficha.cliente.nombre.split()[0].title()
 
-    lineas = [
-        ENCABEZADO,
-        "",
-        f"Hola {nombre_corto}, aquí está la ficha de tu bicicleta.",
-        "",
-        f"*Ficha N°:* {ficha.numero}",
-        f"*Bicicleta:* {bici}",
-        f"*Estado:* {estado}",
-    ]
-
-    if ficha.repuestos:
-        lineas.append(f"*Repuestos:* S/ {ficha.total_repuestos:,.2f}")
-    if ficha.garantia_dias:
-        lineas.append(f"*Garantía:* {ficha.garantia_dias} días")
-
-    lineas += [
-        "",
-        "Puedes ver y descargar tu ficha aquí:",
-        url_pdf,
-        "",
-        PIE,
-    ]
-    return "\n".join(lineas)
+    return "\n".join(
+        [
+            f"¡Hola, {nombre_corto}! 👋 En ZonaXtrema nos encanta acompañarte y "
+            "queremos agradecerte por confiar en nosotros el cuidado de tu "
+            "engreída. 🚲✨",
+            "",
+            "Te compartimos la ficha técnica completa de tu bicicleta. Recuerda "
+            "que puedes hacer el seguimiento de tu servicio o pedido en el "
+            "siguiente enlace:",
+            f"👉 {url_pdf}",
+            "",
+            "También te invitamos a visitar nuestra tienda virtual:",
+            f"👉 {TIENDA_URL}",
+            "",
+            "¡Muchas gracias por elegirnos! 🚴‍♂️",
+        ]
+    )
 
 
 def mensaje_comprobante(comprobante: ComprobanteElectronico, url_pdf: str) -> str:

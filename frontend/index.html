@@ -8,6 +8,10 @@
     <link rel="manifest" href="/manifest.webmanifest" />
     <meta name="theme-color" content="#0a0a0a" />
     <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+    <!-- La estándar es la que piden los navegadores hoy; la de Apple se queda
+         porque Safari en iOS anterior a la 17 sólo entiende ésa, y sin ella la
+         app instalada desde iPhone abre con la barra del navegador encima. -->
+    <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-title" content="Zona Xtrema" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />

@@ -15,11 +15,10 @@ from app.models.ficha import Ficha
 CODIGO_PAIS = "51"
 LARGO_NACIONAL = 9
 
-#: Encabezado y pie comunes a todos los mensajes que salen al cliente.
-ENCABEZADO = "*ZONA XTREMA BIKES & COMPONENTES*"
+#: Firma con la dirección de la tienda, al final del mensaje del comprobante.
 PIE = "_Av. San Carlos N° 177 - Huancayo_"
 
-#: Tienda virtual, tal como se invita a visitarla en el mensaje del servicio.
+#: Tienda virtual, a la que se invita al cerrar los dos mensajes.
 TIENDA_URL = "https://zonaxtrema.pe"
 
 #: Primeras palabras que no son un nombre de persona: aparecen en boletas de
@@ -110,12 +109,14 @@ def mensaje_comprobante(comprobante: ComprobanteElectronico, url_pdf: str) -> st
     # La denominación puede ser el nombre real del cliente o "CLIENTES VARIOS"
     # en una boleta de mostrador; en ese caso se evita un saludo con nombre.
     nombre = nombre_de_pila(comprobante.cliente_denominacion)
-    saludo = f"Hola {nombre}, " if nombre else "Hola, "
+    saludo = f"¡Hola, {nombre}!" if nombre else "¡Hola!"
 
     lineas = [
-        ENCABEZADO,
+        f"{saludo} ¡Qué alegría saludarte! 😊",
         "",
-        f"{saludo}aquí está tu comprobante electrónico.",
+        "Queremos agradecerte de corazón por tu compra y por confiar en la "
+        "familia de ZONA XTREMA BIKES & COMPONENTES. Nos emociona mucho "
+        "acompañarte y ser parte de tus rutas sobre ruedas. 🚴‍♂️✨",
         "",
         f"*{tipo} N°:* {comprobante.numero_completo}",
         f"*Fecha:* {comprobante.fecha_emision.strftime('%d/%m/%Y')}",
@@ -128,6 +129,11 @@ def mensaje_comprobante(comprobante: ComprobanteElectronico, url_pdf: str) -> st
         "",
         "Puedes ver y descargar tu comprobante aquí:",
         url_pdf,
+        "",
+        "También te invitamos a visitar nuestra tienda virtual:",
+        f"👉 {TIENDA_URL}",
+        "",
+        "¡Muchas gracias por elegirnos! 🚴‍♂️✨",
         "",
         PIE,
     ]

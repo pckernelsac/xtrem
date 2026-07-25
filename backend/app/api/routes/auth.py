@@ -105,6 +105,23 @@ def me(user: User = Depends(get_current_user)) -> User:
     return user
 
 
+@router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
+def logout(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> None:
+    """Invalida todos los tokens del usuario, no sólo el del navegador actual.
+
+    Sin esto, cerrar sesión era un gesto del cliente: borraba los tokens del
+    navegador, pero el refresh seguía siendo válido hasta una semana. Quien lo
+    hubiera copiado antes —de un equipo compartido, de una copia de seguridad
+    del navegador— podía seguir entrando. Subir `token_version` los caduca
+    todos de golpe, que es lo que quien pulsa «cerrar sesión» da por hecho.
+    """
+    user.token_version += 1
+    db.commit()
+
+
 @router.post("/change-password", status_code=status.HTTP_204_NO_CONTENT)
 def change_password(
     data: ChangePasswordRequest,

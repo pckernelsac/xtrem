@@ -60,6 +60,23 @@ api.interceptors.response.use(
   },
 )
 
+/**
+ * Cierra la sesión avisando al servidor, que caduca los tokens emitidos.
+ *
+ * El aviso es en el mejor de los casos: si falla —sin red, token ya vencido—
+ * la sesión local se cierra igual. Dejar al usuario dentro porque el servidor
+ * no contestó sería lo peor de los dos mundos.
+ */
+export async function cerrarSesion(): Promise<void> {
+  try {
+    await api.post(`${API_PREFIX}/auth/logout`)
+  } catch {
+    // Sin reintento: el objetivo es salir, y los tokens caducan por su cuenta.
+  } finally {
+    useAuth.getState().logout()
+  }
+}
+
 /** Extrae el `detail` de FastAPI para mostrarlo al usuario. */
 export function apiErrorMessage(error: unknown, fallback = "Ocurrió un error inesperado"): string {
   if (error instanceof AxiosError) {

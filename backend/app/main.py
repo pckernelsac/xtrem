@@ -107,12 +107,17 @@ app.include_router(publico_comprobante.router)
 @app.get("/health", tags=["infra"])
 def health() -> dict[str, str]:
     """Liveness: el proceso responde."""
-    return {"status": "ok", "environment": settings.ENVIRONMENT}
+    return {"status": "ok"}
 
 
 @app.get("/health/db", tags=["infra"])
 def health_db() -> dict[str, str]:
-    """Readiness: la base de datos responde."""
+    """Readiness: la base de datos responde.
+
+    La respuesta no nombra la base ni el entorno: estos dos endpoints están
+    abiertos para que el orquestador los consulte sin credenciales, así que no
+    deben contar nada que sirva para preparar un ataque.
+    """
     with engine.connect() as conn:
         conn.execute(text("SELECT 1"))
-    return {"status": "ok", "database": settings.POSTGRES_DB}
+    return {"status": "ok"}

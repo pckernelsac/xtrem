@@ -1,7 +1,9 @@
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
+
+from app.core.passwords import validar_password
 
 
 class RoleBrief(BaseModel):
@@ -24,6 +26,11 @@ class UserCreate(UserBase):
     password: str = Field(min_length=8, max_length=72)
     role_id: uuid.UUID
 
+    @field_validator("password")
+    @classmethod
+    def _politica(cls, v: str) -> str:
+        return validar_password(v)
+
 
 class UserUpdate(BaseModel):
     email: EmailStr | None = None
@@ -33,6 +40,11 @@ class UserUpdate(BaseModel):
     is_active: bool | None = None
     role_id: uuid.UUID | None = None
     password: str | None = Field(default=None, min_length=8, max_length=72)
+
+    @field_validator("password")
+    @classmethod
+    def _politica(cls, v: str | None) -> str | None:
+        return validar_password(v) if v is not None else None
 
 
 class UserOut(UserBase):

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react"
 import { Outlet, useLocation, useNavigate } from "react-router-dom"
 import { LogOut, Menu, Moon, Sun } from "lucide-react"
 
+import { cerrarSesion } from "@/lib/api"
 import { useAuth } from "@/lib/auth"
 import { useTheme } from "@/lib/theme"
 import { Notificaciones } from "./Notificaciones"
@@ -27,7 +28,7 @@ export function AppLayout() {
   const [collapsed, setCollapsed] = useState(false)
   const [menuMovil, setMenuMovil] = useState(false)
   const esEscritorio = useEsEscritorio()
-  const { me, logout } = useAuth()
+  const me = useAuth((s) => s.me)
   const { theme, setTheme } = useTheme()
   const navigate = useNavigate()
   const { pathname } = useLocation()
@@ -104,13 +105,13 @@ export function AppLayout() {
             </div>
 
             <button
-              onClick={() => {
-                logout()
+              onClick={async () => {
+                await cerrarSesion()
                 navigate("/login", { replace: true })
               }}
               className="rounded-md border border-border p-2 text-muted-foreground hover:bg-accent hover:text-foreground"
               aria-label="Cerrar sesión"
-              title="Cerrar sesión"
+              title="Cerrar sesión en todos los dispositivos"
             >
               <LogOut className="h-4 w-4" />
             </button>

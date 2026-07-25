@@ -40,10 +40,14 @@ export function ClienteFormModal({
   open,
   onClose,
   cliente,
+  onCreated,
 }: {
   open: boolean
   onClose: () => void
   cliente?: Cliente | null
+  /** Se dispara con el cliente recién creado; el punto de venta lo usa para
+   *  seleccionarlo de inmediato sin salir del cobro. */
+  onCreated?: (cliente: Cliente) => void
 }) {
   const qc = useQueryClient()
   const [form, setForm] = useState<FormState>(VACIO)
@@ -116,11 +120,16 @@ export function ClienteFormModal({
         direccion: form.direccion.trim() || null,
         notas: form.notas.trim() || null,
       }
-      if (cliente) await api.patch(`${API_PREFIX}/clientes/${cliente.id}`, payload)
-      else await api.post(`${API_PREFIX}/clientes`, payload)
+      if (cliente) {
+        await api.patch(`${API_PREFIX}/clientes/${cliente.id}`, payload)
+        return null
+      }
+      const { data } = await api.post<Cliente>(`${API_PREFIX}/clientes`, payload)
+      return data
     },
-    onSuccess: () => {
+    onSuccess: (creado) => {
       qc.invalidateQueries({ queryKey: ["clientes"] })
+      if (creado) onCreated?.(creado)
       onClose()
     },
   })

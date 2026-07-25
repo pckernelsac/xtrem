@@ -1,3 +1,4 @@
+import type { TipoItem } from "@/features/inventario/types"
 import type { MetodoPago } from "@/features/ventas/types"
 
 export type EstadoFicha =
@@ -63,7 +64,13 @@ export type Repuesto = {
   precio_unitario: string
   subtotal: string
   /** Presente sólo si la línea está enlazada al inventario. */
-  producto: { id: string; sku: string; nombre: string; stock_actual: string } | null
+  producto: {
+    id: string
+    sku: string
+    nombre: string
+    tipo: TipoItem
+    stock_actual: string
+  } | null
 }
 
 export type UsuarioBrief = { id: string; full_name: string }

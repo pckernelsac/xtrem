@@ -11,6 +11,7 @@ from app.models.bicicleta import TipoBicicleta
 from app.models.caja import MetodoPago
 from app.models.comprobante import EstadoComprobante, TipoComprobante
 from app.models.ficha import EstadoFicha, ServicioSolicitado
+from app.models.inventario import TipoItem
 
 PREFIJO_PNG = "data:image/png;base64,"
 
@@ -33,6 +34,9 @@ class ProductoRepuesto(BaseModel):
     id: uuid.UUID
     sku: str
     nombre: str
+    #: Un servicio no lleva existencias; sin el tipo, la ficha mostraría
+    #: "disponible 0" y alarmaría por una línea que nunca toca el almacén.
+    tipo: TipoItem
     stock_actual: Decimal
 
 

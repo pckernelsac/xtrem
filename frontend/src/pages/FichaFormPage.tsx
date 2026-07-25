@@ -1,7 +1,18 @@
 import { useEffect, useMemo, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useNavigate, useParams } from "react-router-dom"
-import { ArrowLeft, Check, Loader2, Plus, Search, Trash2, UserPlus, X } from "lucide-react"
+import {
+  AlertTriangle,
+  ArrowLeft,
+  Check,
+  Loader2,
+  Package,
+  Plus,
+  Search,
+  Trash2,
+  UserPlus,
+  X,
+} from "lucide-react"
 
 import { api, API_PREFIX, apiErrorMessage } from "@/lib/api"
 import { Button, Field, FormError, Input, Select, Textarea } from "@/components/ui/Form"
@@ -11,6 +22,7 @@ import { BicicletaFormModal } from "@/features/clientes/BicicletaFormModal"
 import { BuscarClienteDocumento } from "@/features/clientes/BuscarClienteDocumento"
 import { ClienteFormModal } from "@/features/clientes/ClienteFormModal"
 import type { Bicicleta, Cliente, Page } from "@/features/clientes/types"
+import { BuscarProducto } from "@/features/inventario/BuscarProducto"
 import { cantidad as fmtCantidad, type Producto as ProductoInv } from "@/features/inventario/types"
 import {
   SERVICIOS_COL1,
@@ -21,13 +33,22 @@ import {
 } from "@/features/fichas/types"
 import { METODOS, type MetodoPago } from "@/features/ventas/types"
 
+/** Lo mínimo para mostrar la línea enlazada sin volver a consultar el catálogo. */
+type ProductoLinea = {
+  id: string
+  sku: string
+  nombre: string
+  /** `null` en un servicio: no lleva existencias y nunca queda en rojo. */
+  stock: number | null
+}
+
 type FilaRepuesto = {
   cantidad: string
   descripcion: string
   marca: string
   precio_unitario: string
-  /** Vacío = repuesto de texto libre, que no mueve el inventario. */
-  producto_id: string
+  /** Null = repuesto de texto libre, que no mueve el inventario. */
+  producto: ProductoLinea | null
 }
 
 const FILA_VACIA: FilaRepuesto = {
@@ -35,8 +56,15 @@ const FILA_VACIA: FilaRepuesto = {
   descripcion: "",
   marca: "",
   precio_unitario: "",
-  producto_id: "",
+  producto: null,
 }
+
+const aProductoLinea = (p: ProductoInv): ProductoLinea => ({
+  id: p.id,
+  sku: p.sku,
+  nombre: p.nombre,
+  stock: p.tipo === "SERVICIO" ? null : Number(p.stock_actual),
+})
 
 /** Datos mínimos para mostrar el cliente elegido; los cubren por igual la
  *  búsqueda por documento, la búsqueda por nombre y el alta desde la ficha. */
@@ -121,16 +149,6 @@ export default function FichaFormPage() {
     setClienteSugOpen(false)
   }
 
-  const productosQ = useQuery({
-    queryKey: ["inventario", "productos", "select-ficha"],
-    queryFn: async () =>
-      (
-        await api.get<Page<ProductoInv>>(`${API_PREFIX}/inventario/productos`, {
-          params: { is_active: true, page_size: 300 },
-        })
-      ).data,
-  })
-
   // Sólo las bicicletas del cliente elegido: el backend rechaza una ficha
   // cuya bici pertenezca a otra persona, así que no la ofrecemos siquiera.
   const bicisQ = useQuery({
@@ -167,7 +185,15 @@ export default function FichaFormPage() {
             descripcion: r.descripcion,
             marca: r.marca ?? "",
             precio_unitario: String(Number(r.precio_unitario)),
-            producto_id: r.producto?.id ?? "",
+            producto: r.producto
+              ? {
+                  id: r.producto.id,
+                  sku: r.producto.sku,
+                  nombre: r.producto.nombre,
+                  stock:
+                    r.producto.tipo === "SERVICIO" ? null : Number(r.producto.stock_actual),
+                }
+              : null,
           }))
         : [{ ...FILA_VACIA }],
     )
@@ -196,36 +222,66 @@ export default function FichaFormPage() {
   const setFila = (i: number, campo: keyof FilaRepuesto, valor: string) =>
     setFilas((prev) => prev.map((f, j) => (j === i ? { ...f, [campo]: valor } : f)))
 
-  /** Al elegir un producto del catálogo se rellena la línea con sus datos. */
-  const elegirProducto = (i: number, productoId: string) => {
-    const p = (productosQ.data?.items ?? []).find((x) => x.id === productoId)
-    setFilas((prev) =>
-      prev.map((f, j) =>
-        j !== i
-          ? f
-          : p
-            ? {
-                ...f,
-                producto_id: p.id,
-                descripcion: p.nombre,
-                marca: p.marca ?? "",
-                precio_unitario: String(Number(p.precio_venta)),
-              }
-            : { ...f, producto_id: "" },
-      ),
-    )
+  /** Unidades que esta ficha puede consumir de un producto. Al editar, lo ya
+   *  consumido por ella sigue reservado para ella y vuelve a estar disponible. */
+  const disponibleDe = (productoId: string, stock: number | null): number | null => {
+    if (stock === null) return null
+    const yaEnFicha = (fichaQ.data?.repuestos ?? [])
+      .filter((r) => r.producto?.id === productoId)
+      .reduce((acc, r) => acc + Number(r.cantidad), 0)
+    return stock + yaEnFicha
   }
 
-  const stockDisponible = (fila: FilaRepuesto): number | null => {
-    if (!fila.producto_id) return null
-    const p = (productosQ.data?.items ?? []).find((x) => x.id === fila.producto_id)
-    if (!p) return null
-    // Al editar, lo ya consumido por esta ficha sigue reservado para ella.
-    const yaEnFicha = fichaQ.data?.repuestos
-      .filter((r) => r.producto?.id === fila.producto_id)
-      .reduce((acc, r) => acc + Number(r.cantidad), 0)
-    return Number(p.stock_actual) + (yaEnFicha ?? 0)
+  const stockDisponible = (fila: FilaRepuesto): number | null =>
+    fila.producto ? disponibleDe(fila.producto.id, fila.producto.stock) : null
+
+  /** Lo que el buscador debe ofrecer: lo disponible menos lo que ya se llevaron
+   *  las líneas del formulario, para no prometer piezas dos veces. */
+  const disponibleParaBuscador = (p: ProductoInv): number | null => {
+    const disponible = disponibleDe(p.id, p.tipo === "SERVICIO" ? null : Number(p.stock_actual))
+    if (disponible === null) return null
+    const comprometido = filas
+      .filter((f) => f.producto?.id === p.id)
+      .reduce((acc, f) => acc + (Number(f.cantidad) || 0), 0)
+    return disponible - comprometido
   }
+
+  /** Alta desde el buscador: rellena la línea con los datos del catálogo. */
+  const agregarProducto = (p: ProductoInv) => {
+    setFilas((prev) => {
+      // Repetir el mismo producto suma cantidad en vez de duplicar la línea:
+      // el stock las ve como una sola y dos líneas iguales sólo confunden.
+      const i = prev.findIndex((f) => f.producto?.id === p.id)
+      if (i >= 0) {
+        return prev.map((f, j) =>
+          j === i ? { ...f, cantidad: String((Number(f.cantidad) || 0) + 1) } : f,
+        )
+      }
+
+      const fila: FilaRepuesto = {
+        cantidad: "1",
+        descripcion: p.nombre,
+        marca: p.marca ?? "",
+        precio_unitario: String(Number(p.precio_venta)),
+        producto: aProductoLinea(p),
+      }
+
+      // La fila en blanco inicial es andamiaje: se aprovecha antes de crear otra.
+      const vacia = prev.findIndex((f) => !f.producto && !f.descripcion.trim())
+      if (vacia >= 0) return prev.map((f, j) => (j === vacia ? fila : f))
+      return [...prev, fila]
+    })
+  }
+
+  /** Desenlazar deja la línea como texto libre: se conserva lo escrito, pero
+   *  deja de mover el almacén. */
+  const desenlazar = (i: number) =>
+    setFilas((prev) => prev.map((f, j) => (j === i ? { ...f, producto: null } : f)))
+
+  const excedidas = filas.filter((f) => {
+    const disponible = stockDisponible(f)
+    return disponible !== null && Number(f.cantidad) > disponible
+  })
 
   const guardar = useMutation({
     mutationFn: async () => {
@@ -247,7 +303,7 @@ export default function FichaFormPage() {
             descripcion: f.descripcion.trim(),
             marca: f.marca.trim() || null,
             precio_unitario: Number(f.precio_unitario) || 0,
-            producto_id: f.producto_id || null,
+            producto_id: f.producto?.id ?? null,
           })),
       }
 
@@ -510,10 +566,19 @@ export default function FichaFormPage() {
 
         <Seccion titulo="Repuestos / componentes utilizados">
           <p className="mb-3 text-xs text-muted-foreground">
-            Al enlazar una línea con un producto del inventario, la pieza se descuenta del stock
-            en cuanto guardas la ficha. Las líneas sin enlazar son sólo texto y no mueven el
-            almacén.
+            Busca la pieza en el inventario y agrégala: se descuenta del stock en cuanto guardas
+            el servicio. Las líneas sin enlazar son sólo texto y no mueven el almacén.
           </p>
+
+          {/* El buscador vive fuera de la tabla a propósito: dentro, el scroll
+              horizontal recortaría el desplegable de sugerencias. */}
+          <div className="mb-3">
+            <BuscarProducto
+              onSeleccionar={agregarProducto}
+              disponibleDe={disponibleParaBuscador}
+              placeholder="Buscar producto del inventario por SKU, nombre o marca"
+            />
+          </div>
 
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -535,29 +600,48 @@ export default function FichaFormPage() {
                   return (
                     <tr key={i}>
                       <td className="py-1 pr-2 align-top">
-                        <Select
-                          value={f.producto_id}
-                          onChange={(e) => elegirProducto(i, e.target.value)}
-                          disabled={productosQ.isLoading}
-                        >
-                          <option value="">Sin enlazar (texto libre)</option>
-                          {(productosQ.data?.items ?? []).map((p) => (
-                            <option key={p.id} value={p.id}>
-                              {p.sku} · {p.nombre} ({fmtCantidad(p.stock_actual)})
-                            </option>
-                          ))}
-                        </Select>
-                        {disponible !== null && (
-                          <p
+                        {f.producto ? (
+                          <div
                             className={
                               excede
-                                ? "mt-1 text-[11px] text-state-danger"
-                                : "mt-1 text-[11px] text-muted-foreground"
+                                ? "rounded-md border border-state-danger/40 bg-state-danger/5 px-2.5 py-1.5"
+                                : "rounded-md border border-state-success/30 bg-state-success/5 px-2.5 py-1.5"
                             }
                           >
-                            {excede
-                              ? `Sólo hay ${fmtCantidad(disponible)} disponibles`
-                              : `Disponible: ${fmtCantidad(disponible)}`}
+                            <div className="flex items-start justify-between gap-1.5">
+                              <div className="min-w-0">
+                                <p className="tabular flex items-center gap-1 text-xs font-medium">
+                                  <Package className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                                  <span className="truncate">{f.producto.sku}</span>
+                                </p>
+                                <p
+                                  className={
+                                    excede
+                                      ? "mt-0.5 text-[11px] text-state-danger"
+                                      : "mt-0.5 text-[11px] text-muted-foreground"
+                                  }
+                                >
+                                  {disponible === null
+                                    ? "Servicio · sin stock"
+                                    : excede
+                                      ? `Sólo hay ${fmtCantidad(disponible)} disponibles`
+                                      : `Disponible: ${fmtCantidad(disponible)}`}
+                                </p>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => desenlazar(i)}
+                                className="shrink-0 rounded p-0.5 text-muted-foreground hover:bg-accent hover:text-foreground"
+                                title="Desenlazar del inventario (la línea pasa a texto libre)"
+                                aria-label="Desenlazar del inventario"
+                              >
+                                <X className="h-3 w-3" />
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <p className="px-1 py-2 text-xs text-muted-foreground">
+                            Texto libre · no mueve el almacén
                           </p>
                         )}
                       </td>
@@ -623,13 +707,26 @@ export default function FichaFormPage() {
               onClick={() => setFilas((p) => [...p, { ...FILA_VACIA }])}
             >
               <Plus className="h-3.5 w-3.5" />
-              Agregar fila
+              Línea libre (pieza sin SKU)
             </Button>
             <div className="text-sm">
               <span className="text-muted-foreground">Subtotal repuestos</span>{" "}
               <span className="tabular text-lg font-semibold">{soles(totalRepuestos)}</span>
             </div>
           </div>
+
+          {/* El backend rechaza la ficha entera con un 409 si falta stock; se
+              avisa antes para no perder lo escrito en un guardado fallido. */}
+          {excedidas.length > 0 && (
+            <div className="mt-3 flex items-start gap-2 rounded-md border border-state-danger/30 bg-state-danger/10 px-3 py-2 text-xs text-state-danger">
+              <AlertTriangle className="mt-px h-3.5 w-3.5 shrink-0" />
+              <span>
+                {excedidas.length === 1
+                  ? "Una línea supera el stock disponible: ajusta la cantidad o desenlázala del inventario."
+                  : `${excedidas.length} líneas superan el stock disponible: ajusta las cantidades o desenlázalas del inventario.`}
+              </span>
+            </div>
+          )}
         </Seccion>
 
         <Seccion titulo="Cobro">
@@ -746,7 +843,10 @@ export default function FichaFormPage() {
           <Button type="button" variant="secondary" onClick={() => navigate(-1)}>
             Cancelar
           </Button>
-          <Button type="submit" disabled={guardar.isPending || (!editando && !clienteId)}>
+          <Button
+            type="submit"
+            disabled={guardar.isPending || (!editando && !clienteId) || excedidas.length > 0}
+          >
             {guardar.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
             {editando ? "Guardar cambios" : "Crear servicio"}
           </Button>

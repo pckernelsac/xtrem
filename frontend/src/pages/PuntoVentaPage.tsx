@@ -10,7 +10,6 @@ import {
   Minus,
   Plus,
   ScanLine,
-  Search,
   ShoppingCart,
   Trash2,
   UserPlus,
@@ -23,8 +22,9 @@ import { Badge } from "@/components/ui/Badge"
 import { Button, Field, FormError, Input, Select, Textarea } from "@/components/ui/Form"
 import { PageHeader } from "@/components/ui/PageHeader"
 import { Paginacion } from "@/components/ui/Paginacion"
+import { BuscarCliente } from "@/features/clientes/BuscarCliente"
 import { ClienteFormModal } from "@/features/clientes/ClienteFormModal"
-import type { Cliente, Page } from "@/features/clientes/types"
+import type { Page } from "@/features/clientes/types"
 import {
   cantidad,
   type Categoria,
@@ -75,9 +75,6 @@ export default function PuntoVentaPage() {
   const [lineas, setLineas] = useState<Linea[]>([])
   const [clienteId, setClienteId] = useState("")
   const [clienteSel, setClienteSel] = useState<ClienteSel | null>(null)
-  const [clienteBusqueda, setClienteBusqueda] = useState("")
-  const [clienteBusquedaDeb, setClienteBusquedaDeb] = useState("")
-  const [clienteSugOpen, setClienteSugOpen] = useState(false)
   const [clienteModalOpen, setClienteModalOpen] = useState(false)
   const [descuento, setDescuento] = useState("")
   const [notas, setNotas] = useState("")
@@ -100,32 +97,9 @@ export default function PuntoVentaPage() {
     queryFn: async () => (await api.get<Arqueo | null>(`${API_PREFIX}/caja/actual`)).data,
   })
 
-  // Buscador de cliente por nombre/documento: el desplegable plano no escala
-  // cuando el directorio crece, así que se consulta al servidor con debounce.
-  useEffect(() => {
-    const t = setTimeout(() => setClienteBusquedaDeb(clienteBusqueda.trim()), 300)
-    return () => clearTimeout(t)
-  }, [clienteBusqueda])
-
-  const clientesQ = useQuery({
-    queryKey: ["clientes", "pos-buscar", clienteBusquedaDeb],
-    queryFn: async () =>
-      (
-        await api.get<Page<Cliente>>(`${API_PREFIX}/clientes`, {
-          params: { search: clienteBusquedaDeb, is_active: true, page_size: 8 },
-        })
-      ).data,
-    enabled: clienteBusquedaDeb.length >= 2,
-  })
-
-  const clientesSug = clienteBusquedaDeb.length >= 2 ? (clientesQ.data?.items ?? []) : []
-  const mostrarClientesSug = clienteSugOpen && clienteBusquedaDeb.length >= 2
-
   const elegirCliente = (c: ClienteSel | null) => {
     setClienteSel(c)
     setClienteId(c?.id ?? "")
-    setClienteBusqueda("")
-    setClienteSugOpen(false)
   }
 
   // ---------------- Catálogo en cuadrícula ----------------
@@ -666,60 +640,10 @@ export default function PuntoVentaPage() {
               </div>
             ) : (
               <div className="space-y-2">
-                {/* El buscador cubre nombre y documento; para uno nuevo, el alta
-                    al vuelo, que ya consulta RENIEC/SUNAT por su cuenta. */}
-                <div className="relative">
-                  <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                  <input
-                    value={clienteBusqueda}
-                    onChange={(e) => {
-                      setClienteBusqueda(e.target.value)
-                      setClienteSugOpen(true)
-                    }}
-                    onFocus={() => setClienteSugOpen(true)}
-                    onBlur={() => setClienteSugOpen(false)}
-                    placeholder="Buscar cliente por nombre o documento"
-                    role="combobox"
-                    aria-expanded={mostrarClientesSug}
-                    aria-controls="sugerencias-clientes"
-                    aria-autocomplete="list"
-                    className="w-full rounded-md border border-border bg-background py-2 pl-8 pr-3 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-                  />
-
-                  {mostrarClientesSug && (
-                    <ul
-                      id="sugerencias-clientes"
-                      role="listbox"
-                      className="absolute z-20 mt-1 max-h-64 w-full overflow-y-auto rounded-md border border-border bg-card shadow-lg"
-                    >
-                      {clientesSug.map((c) => (
-                        <li key={c.id} role="option" aria-selected={false}>
-                          <button
-                            type="button"
-                            onMouseDown={(e) => {
-                              e.preventDefault()
-                              elegirCliente(c)
-                            }}
-                            className="flex w-full flex-col items-start gap-0.5 px-3 py-2 text-left text-sm hover:bg-accent"
-                          >
-                            <span className="block max-w-full truncate font-medium">{c.nombre}</span>
-                            <span className="tabular block max-w-full truncate text-xs text-muted-foreground">
-                              {c.tipo_documento} {c.numero_documento}
-                              {c.telefono ? ` · ${c.telefono}` : ""}
-                            </span>
-                          </button>
-                        </li>
-                      ))}
-                      {clientesSug.length === 0 && (
-                        <li className="px-3 py-3 text-sm text-muted-foreground">
-                          {clientesQ.isFetching
-                            ? "Buscando…"
-                            : `Ningún cliente coincide con “${clienteBusquedaDeb}”`}
-                        </li>
-                      )}
-                    </ul>
-                  )}
-                </div>
+                {/* Un solo campo para las dos vías del mostrador: el cliente ya
+                    registrado y el que llega con su DNI/RUC, que se da de alta
+                    desde el padrón sin salir del cobro. */}
+                <BuscarCliente onSeleccionar={elegirCliente} />
 
                 <Button
                   type="button"

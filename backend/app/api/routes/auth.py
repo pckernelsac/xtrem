@@ -10,6 +10,7 @@ from app.core.security import (
     create_access_token,
     create_refresh_token,
     decode_token,
+    gastar_verificacion,
     hash_password,
     verify_password,
 )
@@ -47,7 +48,12 @@ def login(
     user = db.scalar(select(User).where(User.email == email))
 
     # Mismo mensaje para usuario inexistente y contraseña incorrecta:
-    # no filtramos qué correos existen en el sistema.
+    # no filtramos qué correos existen en el sistema. Y el mismo coste: sin
+    # cuenta se comprueba igualmente contra un hash de descarte, porque
+    # responder al instante también delataría que el correo no existe.
+    if user is None:
+        gastar_verificacion(data.password)
+
     if user is None or not verify_password(data.password, user.hashed_password):
         rate_limit_login.registrar(db, email, ip, exito=False, user_agent=agente)
         raise HTTPException(
@@ -102,10 +108,20 @@ def me(user: User = Depends(get_current_user)) -> User:
 @router.post("/change-password", status_code=status.HTTP_204_NO_CONTENT)
 def change_password(
     data: ChangePasswordRequest,
+    request: Request,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> None:
+    # Mismo freno que el login. Una sesión olvidada en el mostrador permitiría
+    # adivinar la contraseña actual a base de intentos y quedarse con la cuenta
+    # para siempre; aquí el techo es el mismo que en la puerta de entrada.
+    ip = rate_limit_login.ip_de(request)
+    rate_limit_login.verificar(db, user.email, ip)
+
     if not verify_password(data.current_password, user.hashed_password):
+        rate_limit_login.registrar(
+            db, user.email, ip, exito=False, user_agent=request.headers.get("user-agent")
+        )
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail="La contraseña actual no es correcta"
         )
@@ -113,3 +129,5 @@ def change_password(
     # Invalida las sesiones abiertas con la contraseña anterior.
     user.token_version += 1
     db.commit()
+    # Acertar la actual demuestra ser el dueño: no arrastra los fallos previos.
+    rate_limit_login.limpiar(db, user.email, ip)

@@ -20,6 +20,20 @@ def verify_password(plain: str, hashed: str) -> bool:
     return pwd_context.verify(plain, hashed)
 
 
+#: Hash de descarte, calculado una vez al arrancar.
+_HASH_DESCARTE = pwd_context.hash("cuenta-que-no-existe")
+
+
+def gastar_verificacion(plain: str) -> None:
+    """Comprueba contra un hash de descarte y tira el resultado.
+
+    Sin esto, un correo inexistente se responde al instante y uno real tras el
+    bcrypt: la diferencia de tiempo basta para averiguar qué cuentas existen,
+    aunque el mensaje de error sea idéntico en ambos casos.
+    """
+    pwd_context.verify(plain, _HASH_DESCARTE)
+
+
 def _create_token(
     subject: str,
     token_type: TokenType,

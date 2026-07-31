@@ -48,6 +48,7 @@
   th { text-align: left; color: var(--gris); font-size: 11px; text-transform: uppercase; padding-bottom: 6px; border-bottom: 1px solid var(--linea); }
   td { padding: 7px 0; border-bottom: 1px solid #f1f1f3; }
   td.c { text-align: center; width: 44px; }
+  th.p, td.p { text-align: right; white-space: nowrap; width: 78px; }
 
   .garantia { border-radius: 10px; padding: 14px; text-align: center; }
   .garantia.ok  { background: rgba(22,163,74,.08); border: 1px solid rgba(22,163,74,.3); }
@@ -122,10 +123,14 @@
   <div class="card">
     <h2>Repuestos utilizados</h2>
     <table>
-      <thead><tr><th class="c">Cant</th><th>Descripción</th></tr></thead>
+      <thead><tr><th class="c">Cant</th><th>Descripción</th><th class="p">P. unit.</th></tr></thead>
       <tbody>
         {% for r in d.repuestos %}
-        <tr><td class="c">{{ r.cantidad }}</td><td>{{ r.descripcion }}{% if r.marca %} · {{ r.marca }}{% endif %}</td></tr>
+        <tr>
+          <td class="c">{{ r.cantidad }}</td>
+          <td>{{ r.descripcion }}{% if r.marca %} · {{ r.marca }}{% endif %}</td>
+          <td class="p">S/ {{ r.precio_unitario }}</td>
+        </tr>
         {% endfor %}
       </tbody>
     </table>

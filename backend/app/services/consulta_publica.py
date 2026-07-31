@@ -60,6 +60,7 @@ def datos_consulta(db: Session, ficha: Ficha) -> dict:
             "cantidad": f"{r.cantidad:g}",
             "descripcion": r.descripcion,
             "marca": r.marca or "",
+            "precio_unitario": f"{r.precio_unitario:.2f}",
         }
         for r in ficha.repuestos
     ]

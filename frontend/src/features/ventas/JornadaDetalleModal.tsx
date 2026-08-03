@@ -56,6 +56,14 @@ export function JornadaDetalleModal({
   const s = arqueo.data
   const dif = s?.diferencia == null ? null : Number(s.diferencia)
 
+  // Lo cobrado por cada medio que se movió, y su suma. Se omiten los que
+  // quedaron en cero: una lista con cinco ceros no dice nada.
+  const cobrado = METODOS.map((m) => {
+    const t = s?.totales[m.value]
+    return { ...m, monto: Number(t?.ingresos ?? 0) - Number(t?.egresos ?? 0) }
+  }).filter((m) => Math.abs(m.monto) >= 0.005)
+  const totalCobrado = cobrado.reduce((suma, m) => suma + m.monto, 0)
+
   // El PDF va como blob: una navegación normal no manda la cabecera de sesión.
   const descargarArqueo = async () => {
     if (!s) return
@@ -225,16 +233,25 @@ export function JornadaDetalleModal({
               </h3>
               <table className="w-full text-sm">
                 <tbody>
-                  {METODOS.map((m) => {
-                    const t = s.totales[m.value]
-                    const neto = Number(t?.ingresos ?? 0) - Number(t?.egresos ?? 0)
-                    return (
-                      <tr key={m.value} className="border-b border-border last:border-0">
-                        <td className="py-1.5">{METODO_LABEL[m.value]}</td>
-                        <td className="tabular py-1.5 text-right">{soles(neto)}</td>
-                      </tr>
-                    )
-                  })}
+                  {cobrado.map((m) => (
+                    <tr key={m.value} className="border-b border-border">
+                      <td className="py-1.5">{METODO_LABEL[m.value]}</td>
+                      <td className="tabular py-1.5 text-right">{soles(m.monto)}</td>
+                    </tr>
+                  ))}
+                  {cobrado.length === 0 && (
+                    <tr className="border-b border-border">
+                      <td colSpan={2} className="py-1.5 text-muted-foreground">
+                        Sin cobros en esta jornada.
+                      </td>
+                    </tr>
+                  )}
+                  {/* El fondo de apertura no entra: no es dinero vendido. El
+                      cuadre del cajón, que sí lo cuenta, va arriba. */}
+                  <tr className="font-semibold">
+                    <td className="py-1.5">Total cobrado</td>
+                    <td className="tabular py-1.5 text-right">{soles(totalCobrado)}</td>
+                  </tr>
                 </tbody>
               </table>
             </div>

@@ -38,6 +38,7 @@ from app.schemas.ficha import (
     FichaUpdate,
     RepuestoIn,
 )
+from app.schemas.venta import VentaDetail
 from app.services.caja import (
     exigir_sesion_abierta,
     registrar_movimiento_caja,
@@ -82,22 +83,43 @@ def _venta_de_ficha(db: Session, ficha_id: uuid.UUID) -> Venta | None:
 
 
 def _resumen_facturacion(db: Session, ficha: Ficha) -> FacturacionFichaOut | None:
-    """Resumen del comprobante vigente al que derivó el servicio, si existe."""
+    """Resumen del documento al que derivó el servicio, si ya se cobró.
+
+    La nota de venta se reporta en cuanto existe la venta, con o sin comprobante
+    electrónico encima: si sólo se informara del comprobante, un servicio ya
+    cobrado con nota de venta seguiría apareciendo como pendiente de cobro y se
+    volvería a cobrar el saldo.
+    """
     venta = _venta_de_ficha(db, ficha.id)
     if venta is None:
         return None
+
+    resumen = FacturacionFichaOut(venta_id=venta.id, venta_numero=venta.numero)
+
     comp = comprobante_vigente_de(db, venta.id)
-    if comp is None:
-        return None
-    return FacturacionFichaOut(
-        venta_numero=venta.numero,
-        comprobante_id=comp.id,
-        tipo=comp.tipo,
-        numero=comp.numero_completo,
-        estado=comp.estado,
-        es_simulado=comp.es_simulado,
-        pdf_url=comp.pdf_url,
-    )
+    if comp is not None:
+        resumen.comprobante_id = comp.id
+        resumen.tipo = comp.tipo
+        resumen.numero = comp.numero_completo
+        resumen.estado = comp.estado
+        resumen.es_simulado = comp.es_simulado
+        resumen.pdf_url = comp.pdf_url
+
+    return resumen
+
+
+def _exigir_cobrable(ficha: Ficha) -> None:
+    """Condiciones comunes a la nota de venta y al comprobante electrónico."""
+    if ficha.estado is not EstadoFicha.ENTREGADA:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Sólo se cobra un servicio ya entregado",
+        )
+    if ficha.total <= 0:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="El servicio no tiene importe que cobrar",
+        )
 
 
 def _reemplazar_repuestos(
@@ -419,6 +441,34 @@ def cambiar_estado(
     return ficha
 
 
+@router.post("/{ficha_id}/cobrar", response_model=VentaDetail, status_code=status.HTTP_201_CREATED)
+def cobrar_ficha(
+    ficha_id: uuid.UUID,
+    data: FacturarFichaIn,
+    db: Session = Depends(get_db),
+    actor: User = Depends(require_permission("ventas.crear")),
+) -> Venta:
+    """Cobra el servicio con una nota de venta, sin emitir comprobante electrónico.
+
+    Es el documento interno del mostrador: sirve cuando el cliente no pide
+    boleta ni factura. Deja la misma venta que dejaría facturar, así que después
+    se puede emitir el comprobante encima sin volver a cobrar.
+    """
+    ficha = _get_ficha(db, ficha_id)
+    _exigir_cobrable(ficha)
+
+    if _venta_de_ficha(db, ficha.id) is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="El servicio ya fue cobrado",
+        )
+
+    venta = crear_venta_desde_ficha(db, ficha, data.pagos, actor.id)
+    db.commit()
+    db.refresh(venta)
+    return venta
+
+
 @router.post("/{ficha_id}/facturar", response_model=ComprobanteDetail)
 def facturar_ficha(
     ficha_id: uuid.UUID,
@@ -433,21 +483,12 @@ def facturar_ficha(
     cliente: factura si tiene RUC, boleta en cualquier otro caso.
     """
     ficha = _get_ficha(db, ficha_id)
+    _exigir_cobrable(ficha)
 
-    if ficha.estado is not EstadoFicha.ENTREGADA:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Sólo se factura un servicio ya entregado",
-        )
-    if ficha.total <= 0:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="El servicio no tiene importe que facturar",
-        )
-
-    # Reintento idempotente: si ya existe la venta, no se vuelve a cobrar ni a
-    # crear otra. Con un comprobante vigente se bloquea; si el intento anterior
-    # quedó en ERROR, se reintenta la emisión sobre la misma venta.
+    # Reintento idempotente: si ya existe la venta —porque se cobró con nota de
+    # venta o porque un intento anterior falló—, no se vuelve a cobrar ni a
+    # crear otra; los pagos del cuerpo se ignoran. Con un comprobante vigente se
+    # bloquea; si el intento anterior quedó en ERROR, se reintenta sobre la misma.
     venta = _venta_de_ficha(db, ficha.id)
     if venta is not None:
         if comprobante_vigente_de(db, venta.id) is not None:

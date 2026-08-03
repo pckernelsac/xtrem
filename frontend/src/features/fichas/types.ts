@@ -143,12 +143,15 @@ export type Ficha = {
   created_at: string
 }
 
+/** Documento al que derivó el servicio. La nota de venta existe en cuanto se
+ *  cobró; los campos del comprobante llegan nulos hasta que se emite. */
 export type FacturacionFicha = {
+  venta_id: string
   venta_numero: string
-  comprobante_id: string
-  tipo: "BOLETA" | "FACTURA" | "NOTA_CREDITO"
-  numero: string
-  estado: string
+  comprobante_id: string | null
+  tipo: "BOLETA" | "FACTURA" | "NOTA_CREDITO" | null
+  numero: string | null
+  estado: string | null
   es_simulado: boolean
   pdf_url: string | null
 }

@@ -159,15 +159,21 @@ class FichaOut(BaseModel):
 
 
 class FacturacionFichaOut(BaseModel):
-    """Resumen del comprobante al que derivó el servicio, si ya se facturó."""
+    """Resumen del documento al que derivó el servicio, si ya se cobró.
 
+    Un servicio cobrado siempre tiene su nota de venta (la venta que respalda el
+    importe); los campos del comprobante llegan vacíos mientras no se haya
+    emitido la boleta o factura electrónica.
+    """
+
+    venta_id: uuid.UUID
     venta_numero: str
-    comprobante_id: uuid.UUID
-    tipo: TipoComprobante
-    numero: str
-    estado: EstadoComprobante
-    es_simulado: bool
-    pdf_url: str | None
+    comprobante_id: uuid.UUID | None = None
+    tipo: TipoComprobante | None = None
+    numero: str | None = None
+    estado: EstadoComprobante | None = None
+    es_simulado: bool = False
+    pdf_url: str | None = None
 
 
 class FichaDetail(FichaOut):
@@ -211,6 +217,8 @@ class PagoServicioIn(BaseModel):
 
 
 class FacturarFichaIn(BaseModel):
+    """Cobro del servicio, tanto para la nota de venta como para el electrónico."""
+
     #: Pagos que cubren el saldo pendiente del servicio. El adelanto ya
     #: registrado en recepción no se repite aquí.
     pagos: list[PagoServicioIn] = Field(default_factory=list)

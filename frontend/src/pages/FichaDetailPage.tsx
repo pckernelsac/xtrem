@@ -12,6 +12,7 @@ import {
   Pencil,
   Printer,
   Receipt,
+  ShoppingCart,
 } from "lucide-react"
 
 import { api, API_PREFIX, apiErrorMessage } from "@/lib/api"
@@ -24,6 +25,7 @@ import { SkeletonCard } from "@/components/ui/skeleton"
 import { fmtFechaHora } from "@/features/clientes/types"
 import { CobrarFacturarModal } from "@/features/fichas/CobrarFacturarModal"
 import { CompartirModal } from "@/features/fichas/CompartirModal"
+import { CompartirVentaModal } from "@/features/ventas/CompartirVentaModal"
 import {
   ESTADOS,
   ESTADOS_FINALES,
@@ -53,11 +55,13 @@ export default function FichaDetailPage() {
   const canImprimir = usePermission("fichas.imprimir")
   const canCancelar = usePermission("fichas.eliminar")
   const canFacturar = usePermission("facturacion.emitir")
+  const canVender = usePermission("ventas.crear")
 
   const [estadoOpen, setEstadoOpen] = useState(false)
   const [cancelarOpen, setCancelarOpen] = useState(false)
   const [compartirOpen, setCompartirOpen] = useState(false)
   const [cobrarOpen, setCobrarOpen] = useState(false)
+  const [compartirVentaOpen, setCompartirVentaOpen] = useState(false)
 
   const [nuevoEstado, setNuevoEstado] = useState<EstadoFicha>("EN_REVISION")
   const [comentario, setComentario] = useState("")
@@ -95,6 +99,24 @@ export default function FichaDetailPage() {
     onSuccess: () => {
       invalidar()
       setCancelarOpen(false)
+    },
+  })
+
+  // Subir una nota de venta ya cobrada a comprobante electrónico. El saldo ya
+  // entró a caja al emitirla, así que va sin pagos: el backend reutiliza la
+  // misma venta y no vuelve a cobrar.
+  const emitirSobreNota = useMutation({
+    mutationFn: async () => {
+      const { data } = await api.post<{ id: string }>(
+        `${API_PREFIX}/fichas/${id}/facturar`,
+        { pagos: [] },
+      )
+      return data
+    },
+    onSuccess: (comprobante) => {
+      invalidar()
+      qc.invalidateQueries({ queryKey: ["documentos"] })
+      navigate(`/documentos/${comprobante.id}`)
     },
   })
 
@@ -156,8 +178,13 @@ export default function FichaDetailPage() {
   const biciTexto = f.bicicleta
     ? [f.bicicleta.marca, f.bicicleta.modelo].filter(Boolean).join(" ")
     : "Sin bicicleta"
-  const puedeFacturar =
-    canFacturar && f.estado === "ENTREGADA" && !f.facturacion && Number(f.total) > 0
+  // El servicio se cobra una sola vez: mientras no exista la venta se puede
+  // elegir el papel (nota de venta o comprobante electrónico); después ya sólo
+  // queda subir esa nota de venta a boleta o factura.
+  const cobrable = f.estado === "ENTREGADA" && Number(f.total) > 0
+  const puedeCobrar = cobrable && !f.facturacion && (canFacturar || canVender)
+  const notaSinComprobante = Boolean(f.facturacion && !f.facturacion.comprobante_id)
+  const puedeEmitirSobreNota = canFacturar && notaSinComprobante
 
   return (
     <div>
@@ -174,10 +201,23 @@ export default function FichaDetailPage() {
         description={`${f.cliente.nombre} · ${biciTexto}`}
         actions={
           <div className="flex flex-wrap gap-2">
-            {puedeFacturar && (
+            {puedeCobrar && (
               <Button onClick={() => setCobrarOpen(true)}>
                 <Receipt className="h-3.5 w-3.5" />
-                Cobrar y facturar
+                Cobrar servicio
+              </Button>
+            )}
+            {puedeEmitirSobreNota && (
+              <Button
+                onClick={() => emitirSobreNota.mutate()}
+                disabled={emitirSobreNota.isPending}
+              >
+                {emitirSobreNota.isPending ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Receipt className="h-3.5 w-3.5" />
+                )}
+                Emitir {f.cliente.tipo_documento === "RUC" ? "factura" : "boleta"}
               </Button>
             )}
             {canImprimir && (
@@ -394,28 +434,78 @@ export default function FichaDetailPage() {
         </dl>
 
         {f.facturacion ? (
-          <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-border pt-4 text-sm">
-            <Badge tone="success">Facturado</Badge>
-            <Link
-              to={`/documentos/${f.facturacion.comprobante_id}`}
-              className="inline-flex items-center gap-1.5 hover:text-primary hover:underline"
-            >
-              <Receipt className="h-3.5 w-3.5" />
-              {f.facturacion.tipo === "FACTURA" ? "Factura" : "Boleta"} {f.facturacion.numero}
-            </Link>
-            {f.facturacion.es_simulado && <Badge tone="warning">Prueba</Badge>}
+          <div className="mt-4 space-y-3 border-t border-border pt-4">
+            <div className="flex flex-wrap items-center gap-2 text-sm">
+              <Badge tone="success">{f.facturacion.comprobante_id ? "Facturado" : "Cobrado"}</Badge>
+              <Link
+                to={`/ventas/${f.facturacion.venta_id}`}
+                className="inline-flex items-center gap-1.5 hover:text-primary hover:underline"
+              >
+                <ShoppingCart className="h-3.5 w-3.5" />
+                Nota de venta {f.facturacion.venta_numero}
+              </Link>
+              <button
+                onClick={() => setCompartirVentaOpen(true)}
+                className="inline-flex items-center gap-1.5 rounded px-1.5 py-0.5 text-muted-foreground hover:bg-accent hover:text-[#25D366]"
+                title="Enviar la nota de venta al cliente por WhatsApp"
+              >
+                <MessageCircle className="h-3.5 w-3.5" />
+                WhatsApp
+              </button>
+            </div>
+
+            {f.facturacion.comprobante_id ? (
+              <div className="flex flex-wrap items-center gap-2 text-sm">
+                <Link
+                  to={`/documentos/${f.facturacion.comprobante_id}`}
+                  className="inline-flex items-center gap-1.5 hover:text-primary hover:underline"
+                >
+                  <Receipt className="h-3.5 w-3.5" />
+                  {f.facturacion.tipo === "FACTURA" ? "Factura" : "Boleta"} {f.facturacion.numero}
+                </Link>
+                {f.facturacion.es_simulado && <Badge tone="warning">Prueba</Badge>}
+              </div>
+            ) : (
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-sm text-muted-foreground">
+                  El saldo ya se cobró con la nota de venta. Si el cliente pide comprobante
+                  electrónico, se emite sobre ella sin volver a cobrar.
+                </p>
+                {puedeEmitirSobreNota && (
+                  <Button
+                    onClick={() => emitirSobreNota.mutate()}
+                    disabled={emitirSobreNota.isPending}
+                  >
+                    {emitirSobreNota.isPending ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Receipt className="h-3.5 w-3.5" />
+                    )}
+                    Emitir {f.cliente.tipo_documento === "RUC" ? "factura" : "boleta"}
+                  </Button>
+                )}
+              </div>
+            )}
+
+            <FormError
+              message={
+                emitirSobreNota.isError
+                  ? apiErrorMessage(emitirSobreNota.error, "No se pudo emitir el comprobante")
+                  : null
+              }
+            />
           </div>
         ) : (
-          f.estado === "ENTREGADA" &&
-          Number(f.total) > 0 && (
+          cobrable && (
             <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-border pt-4">
               <p className="text-sm text-muted-foreground">
-                El servicio está entregado y listo para facturar.
+                El servicio está entregado y listo para cobrar: nota de venta o comprobante
+                electrónico.
               </p>
-              {puedeFacturar && (
+              {puedeCobrar && (
                 <Button onClick={() => setCobrarOpen(true)}>
                   <Receipt className="h-3.5 w-3.5" />
-                  Cobrar y facturar
+                  Cobrar servicio
                 </Button>
               )}
             </div>
@@ -566,7 +656,23 @@ export default function FichaDetailPage() {
         telefonoCliente={f.cliente.telefono}
       />
 
-      <CobrarFacturarModal open={cobrarOpen} onClose={() => setCobrarOpen(false)} ficha={f} />
+      <CobrarFacturarModal
+        open={cobrarOpen}
+        onClose={() => setCobrarOpen(false)}
+        ficha={f}
+        puedeNotaVenta={canVender}
+        puedeElectronico={canFacturar}
+      />
+
+      {f.facturacion && (
+        <CompartirVentaModal
+          open={compartirVentaOpen}
+          onClose={() => setCompartirVentaOpen(false)}
+          ventaId={f.facturacion.venta_id}
+          titulo={`Nota de venta ${f.facturacion.venta_numero}`}
+          telefonoCliente={f.cliente.telefono}
+        />
+      )}
 
 
       {/* ---------- Modal: cancelar ---------- */}

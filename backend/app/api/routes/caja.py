@@ -1,7 +1,7 @@
 import uuid
 from datetime import date
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -28,12 +28,13 @@ from app.services.caja import (
     sesion_abierta,
     totales_por_metodo,
 )
+from app.services.caja_pdf import render_arqueo_pdf
 
 router = APIRouter(prefix="/caja", tags=["caja"])
 
 
-def _arqueo(db: Session, sesion: SesionCaja) -> ArqueoOut:
-    ventas = (
+def _cantidad_ventas(db: Session, sesion: SesionCaja) -> int:
+    return (
         db.scalar(
             select(func.count(Venta.id)).where(
                 Venta.sesion_caja_id == sesion.id,
@@ -42,6 +43,17 @@ def _arqueo(db: Session, sesion: SesionCaja) -> ArqueoOut:
         )
         or 0
     )
+
+
+def _get_sesion(db: Session, sesion_id: uuid.UUID) -> SesionCaja:
+    sesion = db.get(SesionCaja, sesion_id)
+    if sesion is None:
+        raise HTTPException(status_code=404, detail="Sesión de caja no encontrada")
+    return sesion
+
+
+def _arqueo(db: Session, sesion: SesionCaja) -> ArqueoOut:
+    ventas = _cantidad_ventas(db, sesion)
 
     # Se parte de SesionOut y se agregan los calculados: validar ArqueoOut
     # directamente contra el ORM falla, porque esos campos no existen en el
@@ -106,10 +118,37 @@ def get_sesion(
     db: Session = Depends(get_db),
     _: User = Depends(require_permission("caja.ver")),
 ) -> ArqueoOut:
-    sesion = db.get(SesionCaja, sesion_id)
-    if sesion is None:
-        raise HTTPException(status_code=404, detail="Sesión de caja no encontrada")
-    return _arqueo(db, sesion)
+    return _arqueo(db, _get_sesion(db, sesion_id))
+
+
+@router.get("/sesiones/{sesion_id}/pdf")
+def descargar_arqueo(
+    sesion_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_permission("caja.ver")),
+    descargar: bool = Query(default=False, description="fuerza la descarga en vez de abrirlo"),
+) -> Response:
+    """Reporte de la jornada en A4: lo cobrado por método y el cuadre del cajón.
+
+    Sirve tanto para una jornada cerrada como para la que sigue abierta; en ese
+    caso las cifras son las del momento de imprimir y el PDF lo advierte.
+    """
+    sesion = _get_sesion(db, sesion_id)
+    pdf = render_arqueo_pdf(
+        sesion,
+        totales=totales_por_metodo(db, sesion),
+        esperado=efectivo_esperado(db, sesion),
+        cantidad_ventas=_cantidad_ventas(db, sesion),
+    )
+
+    disposition = "attachment" if descargar else "inline"
+    return Response(
+        content=pdf,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'{disposition}; filename="arqueo-{sesion.numero}.pdf"',
+        },
+    )
 
 
 @router.post("/abrir", response_model=ArqueoOut, status_code=status.HTTP_201_CREATED)

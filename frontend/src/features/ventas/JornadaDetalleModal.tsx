@@ -1,10 +1,11 @@
 import { useQuery } from "@tanstack/react-query"
 import { Link } from "react-router-dom"
-import { ArrowDownRight, ArrowUpRight, ExternalLink } from "lucide-react"
+import { ArrowDownRight, ArrowUpRight, ExternalLink, FileDown } from "lucide-react"
 
 import { api, API_PREFIX } from "@/lib/api"
 import { cn } from "@/lib/utils"
 import { Badge } from "@/components/ui/Badge"
+import { Button } from "@/components/ui/Form"
 import { Modal } from "@/components/ui/Modal"
 import { Skeleton } from "@/components/ui/skeleton"
 import { fmtFechaHora } from "@/features/clientes/types"
@@ -55,6 +56,21 @@ export function JornadaDetalleModal({
   const s = arqueo.data
   const dif = s?.diferencia == null ? null : Number(s.diferencia)
 
+  // El PDF va como blob: una navegación normal no manda la cabecera de sesión.
+  const descargarArqueo = async () => {
+    if (!s) return
+    const res = await api.get(`${API_PREFIX}/caja/sesiones/${s.id}/pdf`, {
+      responseType: "blob",
+      params: { descargar: true },
+    })
+    const url = URL.createObjectURL(res.data as Blob)
+    const a = document.createElement("a")
+    a.href = url
+    a.download = `arqueo-${s.numero}.pdf`
+    a.click()
+    setTimeout(() => URL.revokeObjectURL(url), 60_000)
+  }
+
   return (
     <Modal
       open={Boolean(sesionId)}
@@ -76,6 +92,13 @@ export function JornadaDetalleModal({
         </div>
       ) : (
         <div className="space-y-6">
+          <div className="flex justify-end">
+            <Button variant="secondary" onClick={descargarArqueo}>
+              <FileDown className="h-4 w-4" />
+              Descargar arqueo en PDF
+            </Button>
+          </div>
+
           {/* ---------- Cuadre ---------- */}
           <div className="grid gap-3 sm:grid-cols-4">
             {[

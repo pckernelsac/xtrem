@@ -4,6 +4,7 @@ import {
   ArrowDownRight,
   ArrowUpRight,
   ChevronRight,
+  FileDown,
   Lock,
   LockOpen,
   Loader2,
@@ -124,6 +125,21 @@ export default function CajaPage() {
     },
   })
 
+  // El PDF se pide con el cliente autenticado —una navegación normal no manda
+  // la cabecera Authorization— y se descarga como blob.
+  const descargarArqueo = async (sesionId: string, numero: string) => {
+    const res = await api.get(`${API_PREFIX}/caja/sesiones/${sesionId}/pdf`, {
+      responseType: "blob",
+      params: { descargar: true },
+    })
+    const url = URL.createObjectURL(res.data as Blob)
+    const a = document.createElement("a")
+    a.href = url
+    a.download = `arqueo-${numero}.pdf`
+    a.click()
+    setTimeout(() => URL.revokeObjectURL(url), 60_000)
+  }
+
   const caja = actual.data
   const esperado = Number(caja?.efectivo_esperado ?? 0)
   const diferencia = contado === "" ? null : Number(contado) - esperado
@@ -133,10 +149,10 @@ export default function CajaPage() {
     return Number(t?.ingresos ?? 0) - Number(t?.egresos ?? 0)
   }
 
-  // El esperado del cajón arrastra el fondo con el que se abrió, que no es
-  // dinero cobrado. Para el resumen de la jornada se descuenta, o el total
-  // saldría inflado por el fondo inicial.
-  const efectivoCobrado = esperado - Number(caja?.monto_inicial ?? 0)
+  // Lo cobrado en efectivo sale de los movimientos, no del esperado: ese
+  // arrastra el fondo de apertura, que no es dinero vendido y inflaría el
+  // total de la jornada.
+  const efectivoCobrado = neto("EFECTIVO")
   // Sólo los medios que se movieron: una lista con cuatro ceros no informa.
   const otrosMedios = METODOS.filter((m) => !m.efectivo)
     .map((m) => ({ ...m, monto: neto(m.value) }))
@@ -152,6 +168,14 @@ export default function CajaPage() {
         actions={
           caja ? (
             <div className="flex gap-2">
+              <Button
+                variant="secondary"
+                onClick={() => descargarArqueo(caja.id, caja.numero)}
+                title="Reporte de la jornada en PDF: lo cobrado por método y el cuadre"
+              >
+                <FileDown className="h-4 w-4" />
+                Reporte PDF
+              </Button>
               {canMover && (
                 <Button variant="secondary" onClick={() => setMovOpen(true)}>
                   <Plus className="h-4 w-4" />
@@ -440,10 +464,24 @@ export default function CajaPage() {
                         )}
                       </td>
                       <td className="px-4 py-2.5 text-right">
-                        <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-                          Ver ventas
-                          <ChevronRight className="h-3.5 w-3.5" />
-                        </span>
+                        <div className="flex items-center justify-end gap-1">
+                          {/* stopPropagation: la fila entera abre el detalle. */}
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              descargarArqueo(s.id, s.numero)
+                            }}
+                            className="rounded p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground"
+                            title="Descargar el arqueo en PDF"
+                            aria-label={`Descargar el arqueo de ${s.numero} en PDF`}
+                          >
+                            <FileDown className="h-3.5 w-3.5" />
+                          </button>
+                          <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                            Ver ventas
+                            <ChevronRight className="h-3.5 w-3.5" />
+                          </span>
+                        </div>
                       </td>
                     </tr>
                   )

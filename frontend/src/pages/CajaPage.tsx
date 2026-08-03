@@ -128,6 +128,22 @@ export default function CajaPage() {
   const esperado = Number(caja?.efectivo_esperado ?? 0)
   const diferencia = contado === "" ? null : Number(contado) - esperado
 
+  const neto = (m: MetodoPago) => {
+    const t = caja?.totales[m]
+    return Number(t?.ingresos ?? 0) - Number(t?.egresos ?? 0)
+  }
+
+  // El esperado del cajón arrastra el fondo con el que se abrió, que no es
+  // dinero cobrado. Para el resumen de la jornada se descuenta, o el total
+  // saldría inflado por el fondo inicial.
+  const efectivoCobrado = esperado - Number(caja?.monto_inicial ?? 0)
+  // Sólo los medios que se movieron: una lista con cuatro ceros no informa.
+  const otrosMedios = METODOS.filter((m) => !m.efectivo)
+    .map((m) => ({ ...m, monto: neto(m.value) }))
+    .filter((m) => Math.abs(m.monto) >= 0.005)
+  const totalJornada =
+    efectivoCobrado + otrosMedios.reduce((suma, m) => suma + m.monto, 0)
+
   return (
     <div>
       <PageHeader
@@ -494,10 +510,43 @@ export default function CajaPage() {
         title="Cerrar caja y arquear"
         description={`Sesión ${caja?.numero ?? ""}`}
       >
-        <div className="rounded-md border border-border bg-muted/40 px-3 py-2.5 text-sm">
+        <div className="space-y-2.5 rounded-md border border-border bg-muted/40 px-3 py-2.5 text-sm">
           <div className="flex justify-between">
-            <span className="text-muted-foreground">Efectivo esperado</span>
+            <span className="text-muted-foreground">Efectivo esperado en el cajón</span>
             <span className="tabular font-semibold">{soles(esperado)}</span>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Fondo inicial {soles(caja?.monto_inicial ?? 0)} + {soles(efectivoCobrado)} cobrado
+            en efectivo. Es lo único que se cuenta y se arquea.
+          </p>
+
+          {/* Los medios digitales no pasan por el cajón, pero sí son ventas de
+              la jornada: sin verlos aquí, el cierre no cuadra con lo vendido. */}
+          <div className="border-t border-border pt-2.5">
+            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              Cobrado por otros medios
+            </p>
+            {otrosMedios.length ? (
+              <table className="mt-1.5 w-full">
+                <tbody>
+                  {otrosMedios.map((m) => (
+                    <tr key={m.value}>
+                      <td className="py-0.5 text-muted-foreground">{m.label}</td>
+                      <td className="tabular py-0.5 text-right">{soles(m.monto)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : (
+              <p className="mt-1 text-xs text-muted-foreground">
+                No se cobró nada por Yape, Plin, transferencia ni tarjeta.
+              </p>
+            )}
+          </div>
+
+          <div className="flex justify-between border-t border-border pt-2.5 font-semibold">
+            <span>Total cobrado en la jornada</span>
+            <span className="tabular">{soles(totalJornada)}</span>
           </div>
         </div>
 

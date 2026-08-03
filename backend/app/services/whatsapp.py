@@ -8,8 +8,10 @@ y el mensaje sale desde el teléfono de la tienda.
 import re
 from urllib.parse import quote
 
+from app.core.fechas import dia_local
 from app.models.comprobante import ETIQUETAS_TIPO_COMPROBANTE, ComprobanteElectronico
 from app.models.ficha import Ficha
+from app.models.venta import TipoVenta, Venta
 
 #: Perú. Los celulares son 9 dígitos y empiezan con 9.
 CODIGO_PAIS = "51"
@@ -128,6 +130,61 @@ def mensaje_comprobante(comprobante: ComprobanteElectronico, url_pdf: str) -> st
     lineas += [
         "",
         "Puedes ver y descargar tu comprobante aquí:",
+        url_pdf,
+        "",
+        "También te invitamos a visitar nuestra tienda virtual:",
+        f"👉 {TIENDA_URL}",
+        "",
+        "¡Muchas gracias por elegirnos! 🚴‍♂️✨",
+        "",
+        PIE,
+    ]
+    return "\n".join(lineas)
+
+
+#: Cómo se llama en el chat cada tipo de documento interno.
+ETIQUETAS_TIPO_VENTA = {
+    TipoVenta.VENTA: "Nota de venta",
+    TipoVenta.COTIZACION: "Cotización",
+}
+
+
+def mensaje_venta(venta: Venta, url_pdf: str) -> str:
+    """Mensaje que acompaña al PDF de una nota de venta o una cotización.
+
+    Deja claro de qué documento se trata: una nota de venta no es un
+    comprobante electrónico y el cliente no debe confundirla con una boleta.
+    """
+    tipo = ETIQUETAS_TIPO_VENTA[venta.tipo]
+    es_cotizacion = venta.tipo is TipoVenta.COTIZACION
+
+    nombre = nombre_de_pila(venta.cliente.nombre if venta.cliente else None)
+    saludo = f"¡Hola, {nombre}!" if nombre else "¡Hola!"
+
+    lineas = [
+        f"{saludo} ¡Qué alegría saludarte! 😊",
+        "",
+        (
+            "Te compartimos la cotización que preparamos para ti en ZONA "
+            "XTREMA BIKES & COMPONENTES. 🚴‍♂️✨"
+            if es_cotizacion
+            else "Queremos agradecerte de corazón por tu compra y por confiar en la "
+            "familia de ZONA XTREMA BIKES & COMPONENTES. 🚴‍♂️✨"
+        ),
+        "",
+        f"*{tipo} N°:* {venta.numero}",
+        # El día del taller, no el del servidor: una venta de las 8 p. m. se
+        # guarda en UTC con la fecha del día siguiente.
+        f"*Fecha:* {dia_local(venta.created_at).strftime('%d/%m/%Y')}",
+        f"*Total:* S/ {venta.total:,.2f}",
+    ]
+
+    if es_cotizacion and venta.valido_hasta:
+        lineas.append(f"*Válida hasta:* {venta.valido_hasta.strftime('%d/%m/%Y')}")
+
+    lineas += [
+        "",
+        f"Puedes ver y descargar tu {tipo.lower()} aquí:",
         url_pdf,
         "",
         "También te invitamos a visitar nuestra tienda virtual:",

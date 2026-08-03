@@ -7,6 +7,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.api.deps import require_permission
+from app.core.config import settings
 from app.core.fechas import hoy_local, inicio_del_dia, rango_utc
 from app.db.session import get_db
 from app.models.cliente import Cliente
@@ -15,6 +16,7 @@ from app.models.user import User
 from app.models.venta import EstadoVenta, TipoVenta, Venta
 from app.schemas.venta import (
     AnularIn,
+    CompartirVentaOut,
     ConteoVentas,
     ConvertirIn,
     VentaCreate,
@@ -31,6 +33,7 @@ from app.services.venta import (
     siguiente_numero,
     validar_productos,
 )
+from app.services.whatsapp import enlace_whatsapp, mensaje_venta, normalizar_telefono
 
 router = APIRouter(prefix="/ventas", tags=["ventas"])
 
@@ -350,6 +353,35 @@ def descargar_ticket(
         headers={
             "Content-Disposition": f'inline; filename="ticket-{venta.numero}.pdf"',
         },
+    )
+
+
+@router.post("/{venta_id}/whatsapp", response_model=CompartirVentaOut)
+def compartir_whatsapp(
+    venta_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_permission("ventas.ver")),
+    telefono: str | None = Query(
+        default=None, description="Sobrescribe el teléfono del cliente"
+    ),
+) -> CompartirVentaOut:
+    """Arma el enlace de WhatsApp para mandarle el documento al cliente.
+
+    No envía nada desde el servidor: devuelve el enlace que abre quien atiende,
+    igual que al compartir una ficha o un comprobante. El PDF va por el código
+    público corto (/v/{codigo}), que no vence y no exige sesión al cliente.
+    """
+    venta = _get_venta(db, venta_id)
+
+    url_pdf = f"{settings.PUBLIC_BASE_URL}/v/{venta.codigo_publico}"
+    destino = telefono or (venta.cliente.telefono if venta.cliente else None)
+    mensaje = mensaje_venta(venta, url_pdf)
+
+    return CompartirVentaOut(
+        url_pdf=url_pdf,
+        telefono=normalizar_telefono(destino),
+        whatsapp_url=enlace_whatsapp(destino, mensaje),
+        mensaje=mensaje,
     )
 
 

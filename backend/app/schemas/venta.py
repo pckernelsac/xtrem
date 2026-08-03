@@ -147,6 +147,16 @@ class VentaDetail(VentaOut):
     pagos: list[PagoOut]
 
 
+class CompartirVentaOut(BaseModel):
+    """Enlaces para entregar la nota de venta o la cotización al cliente."""
+
+    url_pdf: str
+    #: Teléfono normalizado a formato internacional, o None si no era usable.
+    telefono: str | None
+    whatsapp_url: str
+    mensaje: str
+
+
 class VentaPage(BaseModel):
     items: list[VentaOut]
     total: int

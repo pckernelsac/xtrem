@@ -20,6 +20,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.core.fechas import hoy_local
 from app.db.base import Base, TimestampMixin, UUIDMixin
 from app.models.caja import MetodoPago
+from app.models.ficha import generar_codigo_publico
 
 CENTIMO = Decimal("0.01")
 
@@ -63,6 +64,13 @@ class Venta(UUIDMixin, TimestampMixin, Base):
     )
     estado: Mapped[EstadoVenta] = mapped_column(
         Enum(EstadoVenta, name="estado_venta"), default=EstadoVenta.CONFIRMADA, nullable=False
+    )
+
+    #: Código corto para el enlace público del PDF (/v/{codigo}) que se manda
+    #: por WhatsApp. Es la única credencial: equivale al papel que el cliente ya
+    #: tiene. Comparte alfabeto y largo con el de fichas y comprobantes.
+    codigo_publico: Mapped[str] = mapped_column(
+        String(16), unique=True, index=True, default=lambda: generar_codigo_publico()
     )
 
     #: Opcional: en el mostrador se vende sin pedir datos.

@@ -6,6 +6,7 @@ import {
   ArchiveRestore,
   FileDown,
   FileText,
+  MessageCircle,
   Plus,
   Printer,
   Search,
@@ -21,6 +22,7 @@ import { PageHeader } from "@/components/ui/PageHeader"
 import { Paginacion } from "@/components/ui/Paginacion"
 import { SkeletonTable } from "@/components/ui/skeleton"
 import { fmtFecha, type Page } from "@/features/clientes/types"
+import { CompartirVentaModal } from "@/features/ventas/CompartirVentaModal"
 import {
   ESTADOS_VENTA,
   ESTADO_VENTA_INFO,
@@ -47,6 +49,8 @@ export default function VentasPage({ tipo }: { tipo: TipoVenta }) {
   const [search, setSearch] = useState("")
   const [debounced, setDebounced] = useState("")
   const [page, setPage] = useState(1)
+  // Un solo modal para todas las filas: guarda a cuál documento apunta.
+  const [compartir, setCompartir] = useState<Venta | null>(null)
 
   useEffect(() => {
     const t = setTimeout(() => {
@@ -252,6 +256,14 @@ export default function VentasPage({ tipo }: { tipo: TipoVenta }) {
                         >
                           <Printer className="h-3.5 w-3.5" />
                         </button>
+                        <button
+                          onClick={() => setCompartir(v)}
+                          className="rounded p-1.5 text-muted-foreground hover:bg-accent hover:text-[#25D366]"
+                          title="Enviar al cliente por WhatsApp"
+                          aria-label={`Enviar ${v.numero} por WhatsApp`}
+                        >
+                          <MessageCircle className="h-3.5 w-3.5" />
+                        </button>
                         {/* Archivar no anula ni borra: el documento sigue en
                             caja, kardex, reportes y ante SUNAT. */}
                         {canEdit && (v.archivada || ESTADOS_ARCHIVABLES.has(v.estado)) && (
@@ -304,6 +316,13 @@ export default function VentasPage({ tipo }: { tipo: TipoVenta }) {
           />
         </div>
       )}
+
+      <CompartirVentaModal
+        open={compartir !== null}
+        onClose={() => setCompartir(null)}
+        ventaId={compartir?.id ?? null}
+        titulo={`${esCotizacion ? "Cotización" : "Nota de venta"} ${compartir?.numero ?? ""}`}
+      />
     </div>
   )
 }

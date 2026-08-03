@@ -84,6 +84,14 @@ export type VentaDetail = Venta & {
   pagos: Pago[]
 }
 
+/** Enlaces para mandarle al cliente la nota de venta o la cotización. */
+export type CompartirVenta = {
+  url_pdf: string
+  telefono: string | null
+  whatsapp_url: string
+  mensaje: string
+}
+
 export type ConteoVentas = {
   todas: number
   por_estado: Record<EstadoVenta, number>

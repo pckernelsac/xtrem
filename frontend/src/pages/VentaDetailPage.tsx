@@ -7,6 +7,7 @@ import {
   CheckCircle2,
   FileDown,
   Loader2,
+  MessageCircle,
   Printer,
   Receipt,
   XCircle,
@@ -20,6 +21,7 @@ import { Modal } from "@/components/ui/Modal"
 import { PageHeader } from "@/components/ui/PageHeader"
 import { SkeletonCard } from "@/components/ui/skeleton"
 import { fmtFecha, fmtFechaHora } from "@/features/clientes/types"
+import { CompartirVentaModal } from "@/features/ventas/CompartirVentaModal"
 import { PagoModal, type LineaPago } from "@/features/ventas/PagoModal"
 import {
   ESTADO_VENTA_INFO,
@@ -42,6 +44,7 @@ export default function VentaDetailPage() {
   const [anularOpen, setAnularOpen] = useState(false)
   const [motivo, setMotivo] = useState("")
   const [convertirOpen, setConvertirOpen] = useState(false)
+  const [compartirOpen, setCompartirOpen] = useState(false)
 
   const { data: v, isLoading } = useQuery({
     queryKey: ["ventas", id],
@@ -167,6 +170,13 @@ export default function VentaDetailPage() {
             <Button variant="secondary" onClick={() => descargar("ticket")}>
               <Printer className="h-4 w-4" />
               Ticket 80 mm
+            </Button>
+            <Button
+              onClick={() => setCompartirOpen(true)}
+              className="bg-[#25D366] hover:bg-[#25D366]/90"
+            >
+              <MessageCircle className="h-4 w-4" />
+              WhatsApp
             </Button>
             {esCotizacion && pendiente && canConvertir && (
               <Button onClick={() => setConvertirOpen(true)}>
@@ -368,6 +378,13 @@ export default function VentaDetailPage() {
         error={convertir.isError ? convertir.error : null}
         cajaAbierta={Boolean(caja.data)}
         onConfirmar={(pagos) => convertir.mutate(pagos)}
+      />
+
+      <CompartirVentaModal
+        open={compartirOpen}
+        onClose={() => setCompartirOpen(false)}
+        ventaId={v.id}
+        titulo={`${esCotizacion ? "Cotización" : "Nota de venta"} ${v.numero}`}
       />
     </div>
   )

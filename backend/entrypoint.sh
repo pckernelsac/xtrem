@@ -42,6 +42,13 @@ echo "Postgres disponible."
 echo "Aplicando migraciones..."
 alembic upgrade head
 
+# Los permisos se ponen al día SIEMPRE, no sólo con RUN_SEED: una versión que
+# añade un permiso nuevo deja el menú correspondiente invisible hasta que
+# alguien lo asigne, y el síntoma no apunta a su causa. Es idempotente y no
+# toca los ajustes hechos a mano en los roles.
+echo "Sincronizando permisos..."
+python -m app.db.sincronizar_permisos
+
 # El seed crea permisos, roles y el administrador. Es idempotente, pero se deja
 # tras una bandera para no tocar producción en cada redeploy sin querer.
 if [ "$RUN_SEED" = "true" ]; then

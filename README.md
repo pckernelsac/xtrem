@@ -381,6 +381,34 @@ marca `es_simulado = true` y la UI muestra un aviso.
 - Regresión del flujo de servicios: ficha → nota de venta → boleta encima, sin
   doble cobro en caja.
 
+### Paso de demo a producción
+
+El **correlativo se reinicia solo**: cada serie tiene su propia secuencia
+(`comprobante_<serie>_seq`), así que al cambiar `SERIE_BOLETA` de `BBB1` a `B001`
+se crea una secuencia nueva y la primera boleta sale con el número 1. No hay que
+tocar nada para eso.
+
+Lo que **no** se arregla solo son los comprobantes emitidos durante las pruebas:
+se quedan en la tabla y no se distinguen de los reales. El registro de ventas que
+se exporta para el contador filtra por fecha de emisión, **no por serie**, así que
+un periodo que abarque las pruebas las declararía ante SUNAT como válidas.
+
+Procedimiento:
+
+1. Cambiar las cuatro `SERIE_*` a las autorizadas y redesplegar.
+2. Ejecutar el corte, que primero sólo informa:
+
+```bash
+docker compose exec zx_api python -m app.db.corte_produccion            # simulación
+docker compose exec zx_api python -m app.db.corte_produccion --aplicar  # ejecuta
+```
+
+Retira los comprobantes de las series que ya no están configuradas, borra sus
+secuencias y reinicia las de producción **sólo si aún no han emitido nada**, para
+no romper la correlatividad de una serie ya en marcha. Las ventas no se tocan:
+las que se habían facturado en pruebas vuelven a quedar pendientes y se pueden
+reemitir con numeración válida.
+
 ### Pendiente para producción
 
 - **Pasar la cuenta de Nubefact a producción** y cambiar las series demo

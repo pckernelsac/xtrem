@@ -100,6 +100,20 @@ class ComprobanteElectronico(UUIDMixin, TimestampMixin, Base):
     def numero_completo(self) -> str:
         return f"{self.serie}-{self.numero}"
 
+    @property
+    def tiene_xml(self) -> bool:
+        """Si se guardó el XML firmado, que es el documento con valor legal.
+
+        Los emitidos con el proveedor anterior no lo tienen: sus archivos vivían
+        en el servidor de aquél, que es justamente lo que se dejó de depender.
+        """
+        return bool(self.xml_firmado)
+
+    @property
+    def tiene_cdr(self) -> bool:
+        """Si SUNAT ya devolvió la constancia de recepción."""
+        return bool(self.cdr_xml)
+
     #: Venta que factura. Una venta factura una sola vez (índice único parcial):
     #: reemitir tras un rechazo se hace anulando y creando otra venta.
     venta_id: Mapped[uuid.UUID | None] = mapped_column(

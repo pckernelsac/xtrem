@@ -31,6 +31,7 @@ from app.schemas.comprobante import (
     EmitirIn,
 )
 from app.services import lotes_sunat
+from app.services.comprobante_pdf import nombre_sunat, render_comprobante_pdf, url_publica
 from app.services.facturacion import (
     anular_comprobante,
     consultar_estado,
@@ -48,15 +49,6 @@ def _get(db: Session, comprobante_id: uuid.UUID) -> ComprobanteElectronico:
     if comprobante is None:
         raise HTTPException(status_code=404, detail="Comprobante no encontrado")
     return comprobante
-
-
-def _url_pdf_publica(comprobante: ComprobanteElectronico) -> str:
-    """URL pública y corta del PDF, servida por /c/{codigo}.
-
-    Cuelga de la raíz y usa el código corto del comprobante, así el enlace que
-    se manda por WhatsApp es breve y no expone la URL de FactPro.
-    """
-    return f"{settings.PUBLIC_BASE_URL}/c/{comprobante.codigo_publico}"
 
 
 @router.get("/conteos", response_model=ConteoComprobantes)
@@ -214,14 +206,14 @@ def compartir_whatsapp(
     """Arma el enlace de WhatsApp para enviar el PDF del comprobante al cliente.
 
     No envía nada desde el servidor: devuelve el `wa.me` que abre quien atiende,
-    igual que al compartir una ficha. El enlace del PDF apunta a NUESTRO dominio
-    y proxea el archivo de FactPro, para no exponer su URL al cliente.
+    igual que al compartir una ficha. El enlace del PDF apunta a nuestro dominio
+    y el documento se genera al pedirlo, sin depender de terceros.
     """
     comprobante = _get(db, comprobante_id)
-    if not comprobante.pdf_url:
+    if comprobante.estado is EstadoComprobante.ERROR:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="El comprobante aún no tiene PDF disponible para compartir",
+            detail="El comprobante no llegó a emitirse: no hay nada que compartir",
         )
 
     # Sin override, se toma el teléfono del cliente de la venta que originó el
@@ -230,7 +222,7 @@ def compartir_whatsapp(
     if not destino and comprobante.venta and comprobante.venta.cliente:
         destino = comprobante.venta.cliente.telefono
 
-    url_pdf = _url_pdf_publica(comprobante)
+    url_pdf = url_publica(comprobante)
     mensaje = mensaje_comprobante(comprobante, url_pdf)
     return CompartirComprobanteOut(
         url_pdf=url_pdf,
@@ -342,3 +334,82 @@ def recoger_pendientes(
     Pensado para un proceso programado: los tickets no se resuelven solos.
     """
     return lotes_sunat.recoger_pendientes(db)
+
+
+# --------------------------------------------------------------------------
+# Archivos del comprobante
+#
+# Emitiendo directo, el archivo es nuestro: el PDF se genera al vuelo y el XML
+# firmado y el CDR salen de la base. Antes eran enlaces al servidor del
+# proveedor, que ya no existe.
+# --------------------------------------------------------------------------
+def _archivo(contenido: bytes, nombre: str, tipo: str, descargar: bool) -> Response:
+    disposicion = "attachment" if descargar else "inline"
+    return Response(
+        content=contenido,
+        media_type=tipo,
+        headers={"Content-Disposition": f'{disposicion}; filename="{nombre}"'},
+    )
+
+
+@router.get("/documentos/{comprobante_id}/pdf")
+def descargar_pdf(
+    comprobante_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_permission("facturacion.ver")),
+    descargar: bool = Query(default=False, description="fuerza la descarga"),
+) -> Response:
+    """Representación impresa del comprobante, generada al momento."""
+    comprobante = _get(db, comprobante_id)
+    return _archivo(
+        render_comprobante_pdf(comprobante),
+        f"{nombre_sunat(comprobante)}.pdf",
+        "application/pdf",
+        descargar,
+    )
+
+
+@router.get("/documentos/{comprobante_id}/xml")
+def descargar_xml(
+    comprobante_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_permission("facturacion.ver")),
+) -> Response:
+    """XML firmado, tal como se envió a SUNAT.
+
+    Es el documento con valor legal —el PDF sólo lo representa— y hay
+    obligación de conservarlo cinco años, así que tiene que poder descargarse.
+    """
+    comprobante = _get(db, comprobante_id)
+    if not comprobante.xml_firmado:
+        raise HTTPException(
+            status_code=404,
+            detail="Este comprobante no tiene XML guardado (se emitió con el proveedor anterior)",
+        )
+    return _archivo(
+        comprobante.xml_firmado.encode("utf-8"),
+        f"{nombre_sunat(comprobante)}.xml",
+        "application/xml",
+        descargar=True,
+    )
+
+
+@router.get("/documentos/{comprobante_id}/cdr")
+def descargar_cdr(
+    comprobante_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_permission("facturacion.ver")),
+) -> Response:
+    """Constancia de recepción de SUNAT: la prueba de que el documento llegó."""
+    comprobante = _get(db, comprobante_id)
+    if not comprobante.cdr_xml:
+        raise HTTPException(
+            status_code=404,
+            detail="Este comprobante todavía no tiene CDR de SUNAT",
+        )
+    return _archivo(
+        comprobante.cdr_xml.encode("utf-8"),
+        f"R-{nombre_sunat(comprobante)}.xml",
+        "application/xml",
+        descargar=True,
+    )

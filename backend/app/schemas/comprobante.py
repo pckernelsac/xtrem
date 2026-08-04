@@ -57,9 +57,13 @@ class ComprobanteOut(BaseModel):
     tipo_estado_sunat: str | None
     descripcion_estado_sunat: str | None
     hash_cpe: str | None
-    xml_url: str | None
-    pdf_url: str | None
-    cdr_url: str | None
+    #: Código del enlace público (`/c/{codigo}`). Con emisión propia el PDF se
+    #: genera al pedirlo, así que reemplaza a las antiguas `pdf_url`/`xml_url`/
+    #: `cdr_url`, que apuntaban al servidor del proveedor y hoy están vacías.
+    codigo_publico: str
+    #: Qué archivos hay realmente, para no ofrecer descargas que darían 404.
+    tiene_xml: bool
+    tiene_cdr: bool
     es_simulado: bool
     mensaje_error: str | None
     motivo_anulacion: str | None

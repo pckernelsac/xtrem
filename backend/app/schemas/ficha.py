@@ -173,6 +173,7 @@ class FacturacionFichaOut(BaseModel):
     numero: str | None = None
     estado: EstadoComprobante | None = None
     es_simulado: bool = False
+    #: Enlace público al PDF (`/c/{codigo}`), que se genera al pedirlo.
     pdf_url: str | None = None
 
 

@@ -44,6 +44,7 @@ from app.services.caja import (
     registrar_movimiento_caja,
     sesion_abierta,
 )
+from app.services.comprobante_pdf import url_publica as url_pdf_comprobante
 from app.services.facturacion import comprobante_vigente_de, emitir_desde_venta
 from app.services.ficha_facturacion import crear_venta_desde_ficha
 from app.services.ficha_inventario import devolver_todo, sincronizar_consumo, validar_productos
@@ -103,7 +104,7 @@ def _resumen_facturacion(db: Session, ficha: Ficha) -> FacturacionFichaOut | Non
         resumen.numero = comp.numero_completo
         resumen.estado = comp.estado
         resumen.es_simulado = comp.es_simulado
-        resumen.pdf_url = comp.pdf_url
+        resumen.pdf_url = url_pdf_comprobante(comp)
 
     return resumen
 

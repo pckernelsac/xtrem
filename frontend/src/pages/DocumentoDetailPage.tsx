@@ -20,6 +20,11 @@ import { Modal } from "@/components/ui/Modal"
 import { PageHeader } from "@/components/ui/PageHeader"
 import { SkeletonCard } from "@/components/ui/skeleton"
 import { fmtFechaHora } from "@/features/clientes/types"
+import {
+  ARCHIVO_INFO,
+  abrirArchivo,
+  type ArchivoComprobante,
+} from "@/features/facturacion/archivos"
 import { CompartirComprobanteModal } from "@/features/facturacion/CompartirComprobanteModal"
 import {
   ESTADO_COMP_INFO,
@@ -44,6 +49,7 @@ export default function DocumentoDetailPage() {
   const canAnular = usePermission("facturacion.anular")
   const [anularOpen, setAnularOpen] = useState(false)
   const [compartirOpen, setCompartirOpen] = useState(false)
+  const [bajando, setBajando] = useState<ArchivoComprobante | null>(null)
   const [motivo, setMotivo] = useState("")
 
   const { data: d, isLoading } = useQuery({
@@ -108,7 +114,7 @@ export default function DocumentoDetailPage() {
         description={`${d.cliente_denominacion} · ${d.cliente_numero_documento}`}
         actions={
           <div className="flex flex-wrap gap-2">
-            {d.pdf_url && (
+            {d.estado !== "ERROR" && (
               <Button variant="secondary" onClick={() => setCompartirOpen(true)}>
                 <MessageCircle className="h-3.5 w-3.5 text-[#25D366]" />
                 Enviar por WhatsApp
@@ -193,27 +199,37 @@ export default function DocumentoDetailPage() {
           </div>
         )}
 
+        {/* Los tres archivos se piden al servidor con la sesión abierta: el PDF
+            se genera al momento y el XML firmado y el CDR salen de la base. */}
         <div className="mt-4 flex flex-wrap gap-3 border-t border-border pt-4">
-          {[
-            { url: d.xml_url, label: "XML firmado", icon: FileCode2 },
-            { url: d.pdf_url, label: "PDF", icon: FileText },
-            { url: d.cdr_url, label: "CDR", icon: Receipt },
-          ].map((a) => (
-            <a
+          {(
+            [
+              { archivo: "pdf", label: "PDF", icon: FileText, hay: true },
+              { archivo: "xml", label: "XML firmado", icon: FileCode2, hay: d.tiene_xml },
+              { archivo: "cdr", label: "CDR", icon: Receipt, hay: d.tiene_cdr },
+            ] as const
+          ).map((a) => (
+            <button
               key={a.label}
-              href={a.url ?? undefined}
-              target="_blank"
-              rel="noreferrer"
+              onClick={() => {
+                setBajando(a.archivo)
+                abrirArchivo(d, a.archivo).finally(() => setBajando(null))
+              }}
+              disabled={!a.hay || bajando !== null}
+              title={a.hay ? ARCHIVO_INFO[a.archivo].titulo : "Todavía no disponible"}
               className={
-                a.url
-                  ? "inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm hover:bg-accent"
+                a.hay
+                  ? "inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm hover:bg-accent disabled:opacity-50"
                   : "inline-flex cursor-not-allowed items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm text-muted-foreground/40"
               }
-              onClick={(e) => !a.url && e.preventDefault()}
             >
-              <a.icon className="h-3.5 w-3.5" />
+              {bajando === a.archivo ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <a.icon className="h-3.5 w-3.5" />
+              )}
               {a.label}
-            </a>
+            </button>
           ))}
         </div>
       </div>

@@ -49,9 +49,11 @@ export type Comprobante = {
   tipo_estado_sunat: string | null
   descripcion_estado_sunat: string | null
   hash_cpe: string | null
-  xml_url: string | null
-  pdf_url: string | null
-  cdr_url: string | null
+  /** Código del enlace público del PDF (/c/{codigo}). */
+  codigo_publico: string
+  /** Qué archivos existen de verdad. El PDF se genera siempre. */
+  tiene_xml: boolean
+  tiene_cdr: boolean
   es_simulado: boolean
   mensaje_error: string | null
   motivo_anulacion: string | null

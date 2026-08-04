@@ -80,6 +80,33 @@ def _ruc_emisor(comprobante: ComprobanteElectronico) -> str:
     return settings.EMISOR_RUC
 
 
+def url_publica(comprobante: ComprobanteElectronico) -> str:
+    """Enlace corto al PDF, el que se manda al cliente.
+
+    Lo sirve `/c/{codigo}` generando el documento al vuelo. Vive aquí, y no
+    repetido en cada sitio que lo necesita, porque ya cambió una vez: antes
+    apuntaba al servidor del proveedor.
+    """
+    return f"{settings.PUBLIC_BASE_URL}/c/{comprobante.codigo_publico}"
+
+
+def nombre_sunat(comprobante: ComprobanteElectronico) -> str:
+    """Nombre normalizado del archivo: `RUC-TIPO-SERIE-CORRELATIVO`.
+
+    Es la convención de SUNAT y la que espera el contador, con el correlativo a
+    ocho dígitos. Sin ella, un año de comprobantes descargados no ordena ni se
+    deja cruzar con lo que la propia SUNAT devuelve.
+    """
+    return "-".join(
+        [
+            _ruc_emisor(comprobante),
+            TIPO_SUNAT.get(comprobante.tipo.value, "01"),
+            comprobante.serie,
+            f"{comprobante.numero:08d}",
+        ]
+    )
+
+
 def _qr_data_url(texto: str) -> str:
     """QR como data URI. Nivel de corrección Q, que es el que pide SUNAT."""
     import base64

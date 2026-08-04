@@ -14,6 +14,7 @@ import {
 import { api, API_PREFIX } from "@/lib/api"
 import { Badge } from "@/components/ui/Badge"
 import { Button } from "@/components/ui/Form"
+import { ARCHIVO_INFO, abrirArchivo, type ArchivoComprobante } from "@/features/facturacion/archivos"
 import { CompartirComprobanteModal } from "@/features/facturacion/CompartirComprobanteModal"
 import { DeclaracionSunat } from "@/features/facturacion/DeclaracionSunat"
 import { ExportarContadorModal } from "@/features/facturacion/ExportarContadorModal"
@@ -35,30 +36,59 @@ import {
 const PAGE_SIZE = 25
 type Tab = "TODAS" | EstadoComprobante
 
-/** Enlace a un archivo del comprobante (XML/PDF/CDR). */
+/**
+ * Enlace a un archivo del comprobante (XML/PDF/CDR).
+ *
+ * Se pide al servidor con la sesión abierta en vez de enlazarlo: los archivos
+ * son nuestros desde que emitimos directo, y una etiqueta `<a>` normal no
+ * llevaría la cabecera de autenticación.
+ */
 function ArchivoLink({
-  url,
-  label,
+  comprobante,
+  archivo,
+  disponible = true,
   icon: Icon,
 }: {
-  url: string | null
-  label: string
+  comprobante: Comprobante
+  archivo: ArchivoComprobante
+  disponible?: boolean
   icon: typeof FileText
 }) {
-  if (!url) {
-    return <span className="text-xs text-muted-foreground/40">{label}</span>
+  const [ocupado, setOcupado] = useState(false)
+  const { label, titulo } = ARCHIVO_INFO[archivo]
+
+  if (!disponible) {
+    return (
+      <span
+        className="text-xs text-muted-foreground/40"
+        title={
+          archivo === "cdr"
+            ? "SUNAT todavía no ha devuelto la constancia"
+            : "Este comprobante no guarda ese archivo"
+        }
+      >
+        {label}
+      </span>
+    )
   }
+
   return (
-    <a
-      href={url}
-      target="_blank"
-      rel="noreferrer"
-      className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
-      title={`Abrir ${label}`}
+    <button
+      onClick={async () => {
+        setOcupado(true)
+        try {
+          await abrirArchivo(comprobante, archivo)
+        } finally {
+          setOcupado(false)
+        }
+      }}
+      disabled={ocupado}
+      className="inline-flex items-center gap-1 text-xs text-primary hover:underline disabled:opacity-50"
+      title={titulo}
     >
       <Icon className="h-3 w-3" />
       {label}
-    </a>
+    </button>
   )
 }
 
@@ -289,13 +319,23 @@ export default function DocumentosPage() {
                     </td>
                     <td className="px-4 py-2.5">
                       <div className="flex items-center gap-3">
-                        <ArchivoLink url={d.xml_url} label="XML" icon={FileCode2} />
-                        <ArchivoLink url={d.pdf_url} label="PDF" icon={FileText} />
-                        <ArchivoLink url={d.cdr_url} label="CDR" icon={Receipt} />
+                        <ArchivoLink comprobante={d} archivo="pdf" icon={FileText} />
+                        <ArchivoLink
+                          comprobante={d}
+                          archivo="xml"
+                          disponible={d.tiene_xml}
+                          icon={FileCode2}
+                        />
+                        <ArchivoLink
+                          comprobante={d}
+                          archivo="cdr"
+                          disponible={d.tiene_cdr}
+                          icon={Receipt}
+                        />
                       </div>
                     </td>
                     <td className="px-4 py-2.5">
-                      {d.pdf_url && (
+                      {d.estado !== "ERROR" && (
                         <button
                           onClick={() => setCompartir(d)}
                           className="inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-xs font-medium text-[#25D366] hover:bg-accent"

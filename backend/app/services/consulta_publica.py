@@ -14,6 +14,7 @@ from app.core.fechas import dia_local, hoy_local
 from app.models.comprobante import ComprobanteElectronico, EstadoComprobante
 from app.models.ficha import ETIQUETAS_ESTADO, ETIQUETAS_SERVICIO, Ficha
 from app.models.venta import Venta
+from app.services.comprobante_pdf import url_publica
 
 
 def datos_consulta(db: Session, ficha: Ficha) -> dict:
@@ -51,7 +52,7 @@ def datos_consulta(db: Session, ficha: Ficha) -> dict:
             comprobante = {
                 "tipo": comp.tipo.value,
                 "numero": comp.numero_completo,
-                "pdf_url": comp.pdf_url,
+                "pdf_url": url_publica(comp),
                 "es_simulado": comp.es_simulado,
             }
 

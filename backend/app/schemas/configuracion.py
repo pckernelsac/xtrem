@@ -45,6 +45,8 @@ class ConfiguracionOut(BaseModel):
     #: Negativo si ya venció. El día que caduca se deja de facturar.
     dias_para_vencer: int | None
 
+    #: Enmascarado: es la mitad de la credencial y tampoco se devuelve entero.
+    #: Sirve para reconocer cuál está puesto, no para reutilizarlo.
     sol_usuario: str | None
     tiene_sol_clave: bool
 

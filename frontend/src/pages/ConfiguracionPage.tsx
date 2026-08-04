@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { AlertTriangle, CheckCircle2, Loader2, ShieldCheck, Upload } from "lucide-react"
+import { AlertTriangle, CheckCircle2, Eye, EyeOff, Loader2, ShieldCheck, Upload } from "lucide-react"
 
 import { api, API_PREFIX, apiErrorMessage } from "@/lib/api"
 import { usePermission } from "@/lib/auth"
@@ -52,7 +52,10 @@ export default function ConfiguracionPage() {
   })
 
   const [form, setForm] = useState<Partial<Configuracion>>({})
+  const [solUsuario, setSolUsuario] = useState("")
   const [solClave, setSolClave] = useState("")
+  const [verClave, setVerClave] = useState(false)
+  const [verClaveCert, setVerClaveCert] = useState(false)
   const [archivo, setArchivo] = useState<File | null>(null)
   const [claveCert, setClaveCert] = useState("")
 
@@ -69,13 +72,18 @@ export default function ConfiguracionPage() {
     mutationFn: async () => {
       await api.put(`${API_PREFIX}/configuracion/sunat`, {
         ...form,
-        // Vacío significa "no la cambies": el formulario nunca trae la actual.
+        // Vacío significa "no lo cambies": el formulario nunca trae los
+        // valores actuales, porque no se devuelven en claro.
+        sol_usuario: solUsuario || undefined,
         sol_clave: solClave || undefined,
       })
     },
     onSuccess: () => {
       invalidar()
+      // Los secretos no se quedan en memoria más de lo necesario.
+      setSolUsuario("")
       setSolClave("")
+      setVerClave(false)
     },
   })
 
@@ -92,6 +100,7 @@ export default function ConfiguracionPage() {
       invalidar()
       setArchivo(null)
       setClaveCert("")
+      setVerClaveCert(false)
     },
   })
 
@@ -207,13 +216,26 @@ export default function ConfiguracionPage() {
                 />
               </Field>
               <Field label="Clave del certificado" className="mt-3">
-                <Input
-                  type="password"
-                  value={claveCert}
-                  onChange={(e) => setClaveCert(e.target.value)}
-                  placeholder="••••••••"
-                  autoComplete="new-password"
-                />
+                <div className="relative">
+                  <Input
+                    type={verClaveCert ? "text" : "password"}
+                    value={claveCert}
+                    onChange={(e) => setClaveCert(e.target.value)}
+                    placeholder="••••••••"
+                    autoComplete="new-password"
+                    spellCheck={false}
+                    className="pr-9"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setVerClaveCert((v) => !v)}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                    title={verClaveCert ? "Ocultar" : "Mostrar mientras escribes"}
+                    tabIndex={-1}
+                  >
+                    {verClaveCert ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
               </Field>
               <div className="mt-3">
                 <FormError
@@ -246,16 +268,27 @@ export default function ConfiguracionPage() {
             Credenciales SOL
           </h2>
           <p className="mt-1 text-xs text-muted-foreground">
-            Usa el usuario <strong>secundario</strong>, no el principal: se revoca desde SUNAT
-            sin tocar el otro.
+            Se guardan cifradas y no se vuelven a mostrar. Con un usuario
+            <strong> secundario</strong> podrías revocar este acceso desde SUNAT sin tocar tu
+            clave principal.
           </p>
 
-          <Field label="Usuario SOL" className="mt-3">
+          <Field
+            label="Usuario SOL"
+            className="mt-3"
+            hint={
+              data.sol_usuario
+                ? `Guardado: ${data.sol_usuario}. Escribe uno nuevo sólo si quieres cambiarlo.`
+                : "Sin usuario no se puede enviar nada a SUNAT."
+            }
+          >
             <Input
-              value={campo("sol_usuario")}
-              onChange={(e) => set("sol_usuario", e.target.value)}
+              value={solUsuario}
+              onChange={(e) => setSolUsuario(e.target.value)}
               disabled={!canEditar}
-              placeholder="MIUSUARIO"
+              placeholder={data.sol_usuario ? "(sin cambios)" : "MIUSUARIO"}
+              autoComplete="off"
+              spellCheck={false}
             />
           </Field>
           <Field
@@ -267,14 +300,29 @@ export default function ConfiguracionPage() {
                 : "Sin clave no se puede enviar nada a SUNAT."
             }
           >
-            <Input
-              type="password"
-              value={solClave}
-              onChange={(e) => setSolClave(e.target.value)}
-              disabled={!canEditar}
-              placeholder={data.tiene_sol_clave ? "••••••••  (sin cambios)" : "Clave SOL"}
-              autoComplete="new-password"
-            />
+            <div className="relative">
+              <Input
+                type={verClave ? "text" : "password"}
+                value={solClave}
+                onChange={(e) => setSolClave(e.target.value)}
+                disabled={!canEditar}
+                placeholder={data.tiene_sol_clave ? "••••••••  (sin cambios)" : "Clave SOL"}
+                autoComplete="new-password"
+                spellCheck={false}
+                className="pr-9"
+              />
+              {/* Revelar lo tecleado evita guardar una clave mal escrita, que
+                  sólo se descubriría al fallar la siguiente emisión. */}
+              <button
+                type="button"
+                onClick={() => setVerClave((v) => !v)}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                title={verClave ? "Ocultar" : "Mostrar mientras escribes"}
+                tabIndex={-1}
+              >
+                {verClave ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
+            </div>
           </Field>
 
           <Field label="Ambiente" className="mt-3">

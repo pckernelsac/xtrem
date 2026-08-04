@@ -24,6 +24,19 @@ router = APIRouter(prefix="/configuracion", tags=["configuración"])
 TAMANO_MAXIMO = 512 * 1024
 
 
+def _enmascarar(valor: str | None) -> str | None:
+    """Deja ver lo justo para reconocer el dato, no para reutilizarlo.
+
+    El usuario SOL es la mitad de la credencial, así que tampoco se devuelve
+    entero: basta con que quien administra reconozca cuál está puesto.
+    """
+    if not valor:
+        return None
+    if len(valor) <= 4:
+        return "•" * len(valor)
+    return f"{valor[:2]}{'•' * (len(valor) - 4)}{valor[-2:]}"
+
+
 def _salida(db: Session, config) -> ConfiguracionOut:
     efectiva = configuracion_sunat.resolver(db)
     return ConfiguracionOut(
@@ -33,7 +46,7 @@ def _salida(db: Session, config) -> ConfiguracionOut:
         certificado_emitido_a=config.certificado_emitido_a,
         certificado_cargado_at=config.certificado_cargado_at,
         dias_para_vencer=config.dias_para_vencer(hoy_local()),
-        sol_usuario=config.sol_usuario,
+        sol_usuario=_enmascarar(config.sol_usuario),
         tiene_sol_clave=bool(config.sol_clave),
         produccion=efectiva.produccion,
         ruc=efectiva.emisor.ruc,

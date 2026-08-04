@@ -90,19 +90,19 @@ class Settings(BaseSettings):
     APISPERU_URL: str = "https://dniruc.apisperu.com/api/v1"
     APISPERU_TOKEN: str = ""
 
-    #: Servicio anterior de consultas (FactPro). Sólo se usa si no hay token de
-    #: APIsPERU, para no romper un despliegue que aún tenga el viejo.
-    FACTPRO_CONSULTAS_URL: str = "https://consultas.factpro.la/api/v1"
-    FACTPRO_CONSULTAS_TOKEN: str = ""
-
     @property
     def usa_nubefact(self) -> bool:
         return self.FACTURADOR.strip().lower() == "nubefact"
 
     @property
     def consulta_documento_disponible(self) -> bool:
-        """Sin token de consultas, el autocompletado por DNI/RUC no opera."""
-        return bool(self.APISPERU_TOKEN.strip() or self.FACTPRO_CONSULTAS_TOKEN.strip())
+        """Sin token de APIsPERU, el autocompletado por DNI/RUC no opera.
+
+        Mira **sólo** el token de APIsPERU, que es el único servicio que
+        consulta `consulta_documento.py`. Aceptar aquí el token viejo de FactPro
+        haría que el botón "Buscar" apareciera y luego fallara en la llamada.
+        """
+        return bool(self.APISPERU_TOKEN.strip())
 
     @property
     def factpro_simulado(self) -> bool:

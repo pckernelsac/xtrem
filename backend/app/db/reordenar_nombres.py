@@ -96,7 +96,7 @@ def reordenar(db: Session, aplicar: bool, limite: int | None, csv_path: Path) ->
     # con el motivo, y no tras recorrer toda la cartera.
     if not settings.consulta_documento_disponible:
         raise SystemExit(
-            "FACTPRO_CONSULTAS_TOKEN no está configurado: este script necesita "
+            "APISPERU_TOKEN no está configurado: este script necesita "
             "consultar RENIEC para saber el orden correcto de cada nombre."
         )
 

@@ -33,11 +33,29 @@ services:
       ADMIN_NAME: ${ADMIN_NAME:-}
 
       # --- Facturación electrónica ---
-      # Sin token, el sistema emite en modo simulación (sin validez ante SUNAT).
+      # Proveedor activo. Sin las credenciales del que esté elegido, el sistema
+      # emite en MODO SIMULACIÓN y sin avisar: comprobantes sin validez ante
+      # SUNAT. Por eso RUTA y TOKEN fallan ruidoso cuando el facturador es
+      # Nubefact, que es el caso por defecto.
+      FACTURADOR: ${FACTURADOR:-nubefact}
+      NUBEFACT_RUTA: ${NUBEFACT_RUTA:?falta NUBEFACT_RUTA (panel de Nubefact -> API)}
+      NUBEFACT_TOKEN: ${NUBEFACT_TOKEN:?falta NUBEFACT_TOKEN (panel de Nubefact -> API)}
+
+      # Series habilitadas EN LA CUENTA; no son libres. Demo usa BBB1/FFF1, y
+      # con las de producción (B001/F001) una cuenta demo rechaza la emisión.
+      SERIE_BOLETA: ${SERIE_BOLETA:-B001}
+      SERIE_FACTURA: ${SERIE_FACTURA:-F001}
+      SERIE_NC_BOLETA: ${SERIE_NC_BOLETA:-BC01}
+      SERIE_NC_FACTURA: ${SERIE_NC_FACTURA:-FC01}
+
+      # Proveedor anterior: sólo se usa con FACTURADOR=factpro.
       FACTPRO_BASE_URL: ${FACTPRO_BASE_URL:-https://api.factpro.la/api/v3}
       FACTPRO_TOKEN: ${FACTPRO_TOKEN:-}
-      FACTPRO_CONSULTAS_URL: ${FACTPRO_CONSULTAS_URL:-https://consultas.factpro.la/api/v1}
-      FACTPRO_CONSULTAS_TOKEN: ${FACTPRO_CONSULTAS_TOKEN:-}
+
+      # Consulta DNI/RUC, independiente del facturador.
+      APISPERU_URL: ${APISPERU_URL:-https://dniruc.apisperu.com/api/v1}
+      APISPERU_TOKEN: ${APISPERU_TOKEN:-}
+
       EMISOR_RUC: ${EMISOR_RUC:-}
       EMISOR_RAZON_SOCIAL: ${EMISOR_RAZON_SOCIAL:-}
     # Sin volúmenes: las fotos de productos viven en la base (tabla

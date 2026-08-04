@@ -42,14 +42,22 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-zonaxtrema}
       SECRET_KEY: ${SECRET_KEY:-cambiar-en-produccion}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173}
+      # Facturación. Sin credenciales del proveedor activo se emite en modo
+      # simulación. Sin estas líneas, definirlas en .env no llega al contenedor.
+      FACTURADOR: ${FACTURADOR:-nubefact}
+      NUBEFACT_RUTA: ${NUBEFACT_RUTA:-}
+      NUBEFACT_TOKEN: ${NUBEFACT_TOKEN:-}
+      SERIE_BOLETA: ${SERIE_BOLETA:-B001}
+      SERIE_FACTURA: ${SERIE_FACTURA:-F001}
+      SERIE_NC_BOLETA: ${SERIE_NC_BOLETA:-BC01}
+      SERIE_NC_FACTURA: ${SERIE_NC_FACTURA:-FC01}
       FACTPRO_BASE_URL: ${FACTPRO_BASE_URL:-https://api.factpro.la/api/v3}
       FACTPRO_TOKEN: ${FACTPRO_TOKEN:-}
-      # El emisor debe coincidir con la cuenta dueña del FACTPRO_TOKEN: es la
-      # que firma. Sin estas dos líneas, definirlas en .env no llega al contenedor.
+      # El emisor debe coincidir con la cuenta del facturador: es la que firma.
       EMISOR_RUC: ${EMISOR_RUC:-10431869662}
       EMISOR_RAZON_SOCIAL: ${EMISOR_RAZON_SOCIAL:-ZONA XTREMA BIKES & COMPONENTES}
-      FACTPRO_CONSULTAS_URL: ${FACTPRO_CONSULTAS_URL:-https://consultas.factpro.la/api/v1}
-      FACTPRO_CONSULTAS_TOKEN: ${FACTPRO_CONSULTAS_TOKEN:-}
+      APISPERU_URL: ${APISPERU_URL:-https://dniruc.apisperu.com/api/v1}
+      APISPERU_TOKEN: ${APISPERU_TOKEN:-}
     ports:
       - "127.0.0.1:${API_PORT:-8000}:8000"
     volumes:

@@ -78,3 +78,50 @@ export type CompartirComprobante = {
   whatsapp_url: string
   mensaje: string
 }
+
+// ---------------------------------------------------------------- Lotes SUNAT
+// Emitir una boleta no la declara: SUNAT sólo la da por informada cuando llega
+// en un resumen diario, y hay plazo para mandarlo.
+export type TipoLote = "RC" | "RA"
+export type EstadoLote = "PENDIENTE" | "ENVIADO" | "ACEPTADO" | "RECHAZADO" | "ERROR"
+
+export const ESTADO_LOTE_INFO: Record<EstadoLote, { label: string; tone: Tone }> = {
+  PENDIENTE: { label: "Pendiente", tone: "warning" },
+  // "En proceso" y no "Enviado": describe mejor lo que pasa, que es que SUNAT
+  // lo está procesando y el CDR todavía no ha llegado.
+  ENVIADO: { label: "En proceso", tone: "info" },
+  ACEPTADO: { label: "Aceptado", tone: "success" },
+  RECHAZADO: { label: "Rechazado", tone: "danger" },
+  ERROR: { label: "Error", tone: "danger" },
+}
+
+export const TIPO_LOTE_LABEL: Record<TipoLote, string> = {
+  RC: "Resumen de boletas",
+  RA: "Comunicación de baja",
+}
+
+export type Lote = {
+  id: string
+  tipo: TipoLote
+  estado: EstadoLote
+  identificador: string
+  fecha_referencia: string
+  fecha_emision: string
+  ticket: string | null
+  codigo_sunat: string | null
+  descripcion_sunat: string | null
+  mensaje_error: string | null
+  es_simulado: boolean
+  cantidad: number
+  pendiente_de_cdr: boolean
+  created_at: string
+}
+
+export type DiaPendiente = {
+  fecha: string
+  boletas: number
+  total: string | null
+  dias_transcurridos: number
+  /** Pasado el plazo de SUNAT deja de ser un olvido y pasa a ser un problema. */
+  fuera_de_plazo: boolean
+}

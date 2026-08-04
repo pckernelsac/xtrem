@@ -15,6 +15,7 @@ import { api, API_PREFIX } from "@/lib/api"
 import { Badge } from "@/components/ui/Badge"
 import { Button } from "@/components/ui/Form"
 import { CompartirComprobanteModal } from "@/features/facturacion/CompartirComprobanteModal"
+import { DeclaracionSunat } from "@/features/facturacion/DeclaracionSunat"
 import { ExportarContadorModal } from "@/features/facturacion/ExportarContadorModal"
 import { FilterTabs } from "@/components/ui/FilterTabs"
 import { PageHeader } from "@/components/ui/PageHeader"
@@ -27,6 +28,7 @@ import {
   TIPO_COMP_LABEL,
   type Comprobante,
   type ConteoComprobantes,
+  type DiaPendiente,
   type EstadoComprobante,
 } from "@/features/facturacion/types"
 
@@ -60,7 +62,10 @@ function ArchivoLink({
   )
 }
 
+type Vista = "documentos" | "declaracion"
+
 export default function DocumentosPage() {
+  const [vista, setVista] = useState<Vista>("documentos")
   const [tab, setTab] = useState<Tab>("TODAS")
   const [search, setSearch] = useState("")
   const [debounced, setDebounced] = useState("")
@@ -98,6 +103,16 @@ export default function DocumentosPage() {
     placeholderData: (prev) => prev,
   })
 
+  // Se consulta siempre, no sólo en su pestaña: el número de boletas sin
+  // declarar es justo lo que tiene que ver quien entra a esta página.
+  const pendientes = useQuery({
+    queryKey: ["facturacion", "lotes", "pendientes"],
+    queryFn: async () =>
+      (await api.get<DiaPendiente[]>(`${API_PREFIX}/facturacion/lotes/pendientes`)).data,
+  })
+  const sinDeclarar = (pendientes.data ?? []).reduce((n, d) => n + d.boletas, 0)
+  const fueraDePlazo = (pendientes.data ?? []).some((d) => d.fuera_de_plazo)
+
   const items = data?.items ?? []
   const total = data?.total ?? 0
 
@@ -129,6 +144,46 @@ export default function DocumentosPage() {
         </div>
       )}
 
+      {/* Conmutador entre el listado y la declaración. El contador va aquí
+          porque es lo que hace que alguien entre a mirarlo. */}
+      <div className="mb-4 flex gap-1 border-b border-border">
+        {(
+          [
+            ["documentos", "Comprobantes", 0],
+            ["declaracion", "Declaración a SUNAT", sinDeclarar],
+          ] as const
+        ).map(([valor, etiqueta, cantidad]) => (
+          <button
+            key={valor}
+            onClick={() => setVista(valor)}
+            className={
+              "-mb-px inline-flex items-center gap-2 border-b-2 px-4 py-2 text-sm transition-colors " +
+              (vista === valor
+                ? "border-primary font-medium text-foreground"
+                : "border-transparent text-muted-foreground hover:text-foreground")
+            }
+          >
+            {etiqueta}
+            {cantidad > 0 && (
+              <span
+                className={
+                  "rounded-full px-1.5 py-0.5 text-xs font-medium " +
+                  (fueraDePlazo
+                    ? "bg-state-danger/15 text-state-danger"
+                    : "bg-state-warning/15 text-state-warning")
+                }
+              >
+                {cantidad}
+              </span>
+            )}
+          </button>
+        ))}
+      </div>
+
+      {vista === "declaracion" ? (
+        <DeclaracionSunat />
+      ) : (
+        <>
       <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
         <FilterTabs<Tab>
           value={tab}
@@ -277,6 +332,8 @@ export default function DocumentosPage() {
             etiqueta="documentos"
           />
         </div>
+      )}
+        </>
       )}
 
       <CompartirComprobanteModal

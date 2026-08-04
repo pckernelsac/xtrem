@@ -12,9 +12,11 @@ fecha, y tipo y número de documento del receptor, separados por `|`.
 from decimal import Decimal
 
 import qrcode
+from sunat_cpe.letras import monto_en_letras
 from weasyprint import HTML
 
 from app.core.config import settings
+from app.core.fechas import TZ_NEGOCIO
 from app.models.comprobante import ETIQUETAS_TIPO_COMPROBANTE, ComprobanteElectronico
 from app.services import sunat_adaptador
 from app.services.ficha_pdf import (
@@ -24,12 +26,35 @@ from app.services.ficha_pdf import (
     _env,
     _monto,
 )
-from app.services.venta_pdf import LIMA, _cantidad
+from app.services.venta_pdf import _cantidad
 
 #: Códigos del catálogo 01 de SUNAT, que es lo que va en el QR.
 TIPO_SUNAT = {"FACTURA": "01", "BOLETA": "03", "NOTA_CREDITO": "07"}
 
 CERO = Decimal("0.00")
+
+#: Catálogo 02 de SUNAT. Se imprime el nombre y el código: el nombre lo entiende
+#: el cliente y el código es el que viaja en el XML.
+MONEDAS = {"PEN": "Soles", "USD": "Dólares americanos", "EUR": "Euros"}
+
+
+def _moneda(codigo: str) -> str:
+    return f"{MONEDAS.get(codigo, codigo)} ({codigo})"
+
+
+def _fecha_hora(comprobante: ComprobanteElectronico) -> str:
+    """Fecha de emisión con la hora, en el huso del taller.
+
+    La **fecha** sale de `fecha_emision`, que es la que tiene efecto tributario y
+    la que viaja en el XML. La **hora** sale de `created_at`, que es cuando se
+    emitió de verdad; se guarda en UTC, así que hay que traerla a Lima o un
+    comprobante de la tarde aparecería emitido de madrugada.
+    """
+    fecha = comprobante.fecha_emision.strftime("%d/%m/%Y")
+    creado = comprobante.created_at
+    if creado is None:
+        return fecha
+    return f"{fecha} · {creado.astimezone(TZ_NEGOCIO).strftime('%H:%M')}"
 
 
 def cadena_qr(comprobante: ComprobanteElectronico) -> str:
@@ -122,6 +147,25 @@ def _qr_data_url(texto: str) -> str:
     return "data:image/png;base64," + base64.b64encode(buffer.getvalue()).decode()
 
 
+def _observaciones(comprobante: ComprobanteElectronico) -> list[str]:
+    """Lo que va bajo «Términos y condiciones / Observaciones».
+
+    Se antepone el número de servicio cuando la venta salió del taller: es lo
+    que permite al cliente —y a quien atienda una garantía— atar la boleta con
+    su reparación, que en papel son dos documentos sin relación aparente.
+    """
+    venta = comprobante.venta
+    if venta is None:
+        return []
+
+    lineas = []
+    if venta.ficha is not None:
+        lineas.append(f"Servicio N° {venta.ficha.numero}")
+    if venta.notas:
+        lineas.append(venta.notas)
+    return lineas
+
+
 def _lineas(comprobante: ComprobanteElectronico) -> list[dict[str, str]]:
     """Detalle del comprobante, tomado de la venta que lo originó.
 
@@ -172,7 +216,8 @@ def render_comprobante_pdf(comprobante: ComprobanteElectronico) -> bytes:
         "c": comprobante,
         "titulo": tipo.upper(),
         "numero": comprobante.numero_completo,
-        "fecha": comprobante.fecha_emision.strftime("%d/%m/%Y"),
+        "fecha": _fecha_hora(comprobante),
+        "moneda": _moneda(comprobante.moneda),
         "cliente": {
             "nombre": comprobante.cliente_denominacion,
             "documento": comprobante.cliente_numero_documento,
@@ -186,6 +231,14 @@ def render_comprobante_pdf(comprobante: ComprobanteElectronico) -> bytes:
         "base": _monto(comprobante.base_imponible or CERO),
         "igv": _monto(comprobante.igv or CERO),
         "total": _monto(comprobante.total or CERO),
+        # El mismo texto que viaja en el XML: sale de la librería, no se
+        # recalcula aquí, para que el papel no pueda discrepar del documento
+        # firmado.
+        "en_letras": monto_en_letras(comprobante.total or CERO, comprobante.moneda),
+        # El XML declara siempre contado: en el mostrador se cobra al confirmar
+        # la venta, y una emisión a crédito exigiría informar las cuotas.
+        "forma_pago": "Contado",
+        "observaciones": _observaciones(comprobante),
         "qr": _qr_data_url(cadena),
         "cadena_qr": cadena,
         "hash": comprobante.hash_cpe or "",

@@ -22,4 +22,4 @@ openpyxl==3.1.5
 # facturación sin que nadie lo haya decidido.
 # Va por el tarball del tag y no por `git+https`: la imagen no lleva git, y
 # añadirlo sólo para esto engordaría el contenedor sin ganar nada.
-sunat-cpe @ https://github.com/pckernelsac/pythoncpe/archive/refs/tags/v0.1.0.tar.gz
+sunat-cpe @ https://github.com/pckernelsac/pythoncpe/archive/refs/tags/v0.2.0.tar.gz

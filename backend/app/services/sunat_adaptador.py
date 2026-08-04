@@ -24,7 +24,7 @@ from sunat_cpe import (
 from sunat_cpe.catalogos import MotivoNotaCredito
 
 from app.core.config import settings
-from app.core.fechas import hoy_local
+from app.core.fechas import ahora_local, hoy_local
 from app.models.cliente import TipoDocumento as TipoDocumentoCliente
 from app.models.comprobante import ComprobanteElectronico, TipoComprobante
 from app.models.inventario import TipoItem
@@ -150,6 +150,8 @@ def comprobante_de_venta(
         serie=serie,
         correlativo=correlativo,
         fecha_emision=hoy_local(),
+        # Sin esto el XML declara medianoche, que nunca es la hora real.
+        hora_emision=ahora_local().strftime("%H:%M:%S"),
         emisor=emisor_configurado(db),
         receptor=receptor_de(venta),
         lineas=[_linea(item, total) for item, total in zip(venta.items, totales, strict=True)],

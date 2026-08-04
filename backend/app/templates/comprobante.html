@@ -48,6 +48,10 @@
   }
   .caja .fila { line-height: 1.45; }
   .caja .fila .k { color: #666; display: inline-block; min-width: 26mm; padding-right: 2mm; }
+  .caja.datos { display: flex; }
+  .caja.datos .col { flex: 1; }
+  .caja.datos .col.der { width: 62mm; flex: 0 0 62mm; padding-left: 4mm; border-left: .8pt solid #eee; }
+  .caja.datos .col.der .k { min-width: 24mm; }
 
   table.items { width: 100%; border-collapse: collapse; margin-top: 4mm; }
   table.items th {
@@ -67,6 +71,15 @@
     display: flex; justify-content: space-between;
     background: #111; color: #fff; padding: 2.2mm 2mm;
     font-size: 12pt; font-weight: bold; border-radius: 1.4mm; margin-top: 1mm;
+  }
+
+  .son { font-size: 8.6pt; }
+  .pago { font-size: 8.6pt; margin-top: 1mm; }
+
+  .obs { margin-top: 5mm; border-top: .8pt solid #ddd; padding-top: 1.6mm; font-size: 7.6pt; color: #444; }
+  .obs .tit {
+    font-weight: bold; font-size: 7.4pt; text-transform: uppercase;
+    letter-spacing: .4pt; color: #e2201f; margin-bottom: 1mm;
   }
 
   .qr-bloque { display: flex; align-items: center; margin-top: 2mm; }
@@ -97,7 +110,7 @@
   <div class="titulo-band">
     <div>
       <h1>{{ titulo }}</h1>
-      <div class="sub">ELECTRÓNICA · Emitida el {{ fecha }}</div>
+      <div class="sub">ELECTRÓNICA</div>
     </div>
     <div class="caja-numero">
       <div class="ruc">R.U.C. {{ empresa.ruc }}</div>
@@ -115,13 +128,23 @@
   <div class="aviso anulado">ANULADO</div>
   {% endif %}
 
-  <div class="caja">
-    <div class="tit">Adquirente</div>
-    <div class="fila"><span class="k">Nombre</span>{{ cliente.nombre }}</div>
-    <div class="fila"><span class="k">Documento</span>{{ cliente.documento }}</div>
-    {% if cliente.direccion %}
-    <div class="fila"><span class="k">Dirección</span>{{ cliente.direccion }}</div>
-    {% endif %}
+  <!-- A la izquierda a quién se emite; a la derecha los datos del documento.
+       En dos columnas porque el recuadro crecería de más en vertical y la
+       fecha y la moneda son lo primero que busca quien revisa el papel. -->
+  <div class="caja datos">
+    <div class="col">
+      <div class="tit">Adquirente</div>
+      <div class="fila"><span class="k">SEÑOR(ES):</span>{{ cliente.nombre }}</div>
+      <div class="fila"><span class="k">Documento:</span>{{ cliente.documento }}</div>
+      {% if cliente.direccion %}
+      <div class="fila"><span class="k">Dirección:</span>{{ cliente.direccion }}</div>
+      {% endif %}
+    </div>
+    <div class="col der">
+      <div class="tit">Comprobante</div>
+      <div class="fila"><span class="k">Fecha de emisión:</span>{{ fecha }}</div>
+      <div class="fila"><span class="k">Moneda:</span>{{ moneda }}</div>
+    </div>
   </div>
 
   <table class="items">
@@ -154,6 +177,10 @@
 
   <div class="cierre">
     <div class="izq">
+      <!-- El importe en letras es obligatorio y viene calculado por la misma
+           función que lo escribe en el XML, así no pueden discrepar. -->
+      <div class="son"><b>SON:</b> {{ en_letras }}</div>
+      <div class="pago"><b>FORMA DE PAGO:</b> {{ forma_pago }}</div>
       <div class="qr-bloque">
         <img src="{{ qr }}" alt="Código QR">
         <div class="leyenda">
@@ -164,11 +191,18 @@
       </div>
     </div>
     <div class="totales">
-      <div class="fila"><span>Op. gravada</span><span>S/ {{ base }}</span></div>
-      <div class="fila"><span>IGV (18%)</span><span>S/ {{ igv }}</span></div>
+      <div class="fila"><span>OP. GRAV.</span><span>S/ {{ base }}</span></div>
+      <div class="fila"><span>I.G.V. (18.0%)</span><span>S/ {{ igv }}</span></div>
       <div class="total"><span>TOTAL</span><span>S/ {{ total }}</span></div>
     </div>
   </div>
+
+  {% if observaciones %}
+  <div class="obs">
+    <div class="tit">Términos y condiciones / Observaciones</div>
+    {% for o in observaciones %}<div>{{ o }}</div>{% endfor %}
+  </div>
+  {% endif %}
 
   <div class="pie">
     <span>{{ empresa.razon_social }} · RUC {{ empresa.ruc }}</span>

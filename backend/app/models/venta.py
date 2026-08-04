@@ -83,6 +83,9 @@ class Venta(UUIDMixin, TimestampMixin, Base):
     ficha_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("fichas.id", ondelete="SET NULL"), index=True
     )
+    #: Se carga con la venta porque el comprobante imprime el número de
+    #: servicio: es lo que permite al cliente atar la boleta con su reparación.
+    ficha: Mapped["Ficha | None"] = relationship(lazy="joined")  # noqa: F821
 
     sesion_caja_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("sesiones_caja.id", ondelete="SET NULL"), index=True

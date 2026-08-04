@@ -8,15 +8,29 @@ respuesta sólo dice si están puestas. Guardarlas en la base ya es un riesgo
 suficiente como para además exponerlas por una API.
 """
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Query,
+    UploadFile,
+    status,
+)
 from sqlalchemy.orm import Session
 
 from app.api.deps import require_permission
 from app.core.fechas import hoy_local
 from app.db.session import get_db
 from app.models.user import User
-from app.schemas.configuracion import ConfiguracionOut, ConfiguracionUpdate
-from app.services import configuracion_sunat
+from app.schemas.configuracion import (
+    ConfiguracionOut,
+    ConfiguracionUpdate,
+    LimpiezaOut,
+    LimpiezaResultadoOut,
+)
+from app.services import configuracion_sunat, limpieza_pruebas
 
 router = APIRouter(prefix="/configuracion", tags=["configuración"])
 
@@ -151,3 +165,44 @@ def subir_certificado(
         db, contenido, clave, archivo.filename or nombre, actor.id
     )
     return _salida(db, config)
+
+
+# --------------------------------------------------------------------------
+# Limpieza de documentos de prueba
+#
+# Probar deja rastro, y el registro de ventas del contador filtra por fecha y
+# no por ambiente: sin retirarlos, los comprobantes de prueba acabarían
+# declarados como válidos.
+# --------------------------------------------------------------------------
+@router.get("/sunat/documentos-prueba", response_model=LimpiezaOut)
+def resumen_documentos_prueba(
+    db: Session = Depends(get_db),
+    _: User = Depends(require_permission("configuracion.ver")),
+) -> dict:
+    """Qué se borraría, sin borrar nada."""
+    return limpieza_pruebas.resumen(db)
+
+
+@router.delete("/sunat/documentos-prueba", response_model=LimpiezaResultadoOut)
+def borrar_documentos_prueba(
+    db: Session = Depends(get_db),
+    actor: User = Depends(require_permission("configuracion.editar")),
+    confirmar: bool = Query(
+        default=False,
+        description="Debe ser true. Sin esto no se borra nada.",
+    ),
+) -> dict:
+    """Retira los comprobantes emitidos contra el ambiente de pruebas.
+
+    **No toca lo emitido en producción**: el filtro está en el servicio y no se
+    puede pedir otra cosa desde aquí.
+
+    La confirmación explícita es deliberada: el borrado no tiene vuelta atrás y
+    una llamada accidental no debería bastar para dispararlo.
+    """
+    if not confirmar:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Falta la confirmación explícita para borrar",
+        )
+    return limpieza_pruebas.borrar(db, actor.id)

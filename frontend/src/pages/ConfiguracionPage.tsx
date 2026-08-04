@@ -1,11 +1,21 @@
 import { useEffect, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { AlertTriangle, CheckCircle2, Eye, EyeOff, Loader2, ShieldCheck, Upload } from "lucide-react"
+import {
+  AlertTriangle,
+  CheckCircle2,
+  Eye,
+  EyeOff,
+  Loader2,
+  ShieldCheck,
+  Trash2,
+  Upload,
+} from "lucide-react"
 
 import { api, API_PREFIX, apiErrorMessage } from "@/lib/api"
 import { usePermission } from "@/lib/auth"
 import { Badge } from "@/components/ui/Badge"
 import { Button, Field, FormError, Input, Select } from "@/components/ui/Form"
+import { Modal } from "@/components/ui/Modal"
 import { PageHeader } from "@/components/ui/PageHeader"
 import { SkeletonCard } from "@/components/ui/skeleton"
 import { fmtFecha } from "@/features/clientes/types"
@@ -38,6 +48,15 @@ type Configuracion = {
   updated_at: string | null
 }
 
+type DocumentoDePrueba = { serie: string; tipo: string; cantidad: number; total: string }
+type Limpieza = {
+  documentos: DocumentoDePrueba[]
+  total_documentos: number
+  lotes: number
+  ventas_afectadas: number
+  comprobantes_en_produccion: number
+}
+
 /** Se avisa con un mes: renovar un certificado no es inmediato. */
 const DIAS_AVISO = 30
 
@@ -56,6 +75,7 @@ export default function ConfiguracionPage() {
   const [solClave, setSolClave] = useState("")
   const [verClave, setVerClave] = useState(false)
   const [verClaveCert, setVerClaveCert] = useState(false)
+  const [limpiarOpen, setLimpiarOpen] = useState(false)
   const [archivo, setArchivo] = useState<File | null>(null)
   const [claveCert, setClaveCert] = useState("")
 
@@ -101,6 +121,24 @@ export default function ConfiguracionPage() {
       setArchivo(null)
       setClaveCert("")
       setVerClaveCert(false)
+    },
+  })
+
+  const limpieza = useQuery({
+    queryKey: ["configuracion", "documentos-prueba"],
+    queryFn: async () =>
+      (await api.get<Limpieza>(`${API_PREFIX}/configuracion/sunat/documentos-prueba`)).data,
+  })
+
+  const limpiar = useMutation({
+    mutationFn: async () => {
+      await api.delete(`${API_PREFIX}/configuracion/sunat/documentos-prueba`, {
+        params: { confirmar: true },
+      })
+    },
+    onSuccess: () => {
+      invalidar()
+      setLimpiarOpen(false)
     },
   })
 
@@ -425,6 +463,89 @@ export default function ConfiguracionPage() {
           </div>
         )}
       </div>
+
+      {/* ---------- Documentos de prueba ---------- */}
+      {canEditar && (limpieza.data?.total_documentos ?? 0) > 0 && (
+        <div className="mt-4 rounded-lg border border-state-warning/40 bg-state-warning/5 p-5">
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Documentos de prueba
+          </h2>
+          <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
+            Hay <strong>{limpieza.data?.total_documentos}</strong> comprobante(s) emitidos
+            contra el ambiente de pruebas. Conviene retirarlos antes de emitir en serio: el
+            registro de ventas del contador filtra por fecha, no por ambiente, y se
+            declararían como si fueran válidos.
+          </p>
+
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+            <div className="flex flex-wrap gap-1.5">
+              {limpieza.data?.documentos.map((d) => (
+                <Badge key={`${d.serie}-${d.tipo}`} tone="neutral">
+                  {d.serie} · {d.cantidad}
+                </Badge>
+              ))}
+              {(limpieza.data?.lotes ?? 0) > 0 && (
+                <Badge tone="neutral">{limpieza.data?.lotes} resumen(es)</Badge>
+              )}
+            </div>
+            <Button variant="danger" onClick={() => setLimpiarOpen(true)}>
+              <Trash2 className="h-4 w-4" />
+              Limpiar documentos de prueba
+            </Button>
+          </div>
+
+          {(limpieza.data?.comprobantes_en_produccion ?? 0) > 0 && (
+            <p className="mt-3 text-xs text-muted-foreground">
+              Los <strong>{limpieza.data?.comprobantes_en_produccion}</strong> comprobante(s)
+              emitidos en producción no se tocan.
+            </p>
+          )}
+        </div>
+      )}
+
+      <Modal
+        open={limpiarOpen}
+        onClose={() => setLimpiarOpen(false)}
+        title="Limpiar documentos de prueba"
+        description={`Se retirarán ${limpieza.data?.total_documentos ?? 0} comprobante(s)`}
+      >
+        <p className="text-sm text-muted-foreground">
+          Se borran los comprobantes emitidos contra el ambiente de pruebas y los resúmenes
+          que los declararon. <strong className="text-foreground">No se puede deshacer.</strong>
+        </p>
+
+        <ul className="mt-3 space-y-1.5 rounded-md border border-border bg-muted/40 px-3 py-2.5 text-sm">
+          <li>
+            Los comprobantes emitidos en <strong>producción no se tocan</strong>
+            {(limpieza.data?.comprobantes_en_produccion ?? 0) > 0
+              ? ` (${limpieza.data?.comprobantes_en_produccion} a salvo).`
+              : "."}
+          </li>
+          <li>
+            Las <strong>ventas no se borran</strong>
+            {(limpieza.data?.ventas_afectadas ?? 0) > 0
+              ? `: ${limpieza.data?.ventas_afectadas} volverán a quedar pendientes de facturar.`
+              : "."}
+          </li>
+          <li>El correlativo vuelve a empezar en 1 en las series que queden vacías.</li>
+        </ul>
+
+        <div className="mt-4">
+          <FormError
+            message={limpiar.isError ? apiErrorMessage(limpiar.error, "No se pudo limpiar") : null}
+          />
+        </div>
+
+        <div className="mt-4 flex justify-end gap-2">
+          <Button variant="secondary" onClick={() => setLimpiarOpen(false)}>
+            Cancelar
+          </Button>
+          <Button variant="danger" disabled={limpiar.isPending} onClick={() => limpiar.mutate()}>
+            {limpiar.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
+            Borrar definitivamente
+          </Button>
+        </div>
+      </Modal>
     </div>
   )
 }

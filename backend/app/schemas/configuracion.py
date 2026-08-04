@@ -5,6 +5,7 @@ Ningún secreto sale por aquí: de la clave SOL y la del certificado sólo se di
 """
 
 from datetime import date, datetime
+from decimal import Decimal
 
 from pydantic import BaseModel, Field
 
@@ -71,3 +72,29 @@ class ConfiguracionOut(BaseModel):
 
     actualizado_por: str | None
     updated_at: datetime | None
+
+
+class DocumentoDePrueba(BaseModel):
+    serie: str
+    tipo: str
+    cantidad: int
+    total: Decimal
+
+
+class LimpiezaOut(BaseModel):
+    """Lo que se retiraría al limpiar los documentos de prueba."""
+
+    documentos: list[DocumentoDePrueba]
+    total_documentos: int
+    lotes: int
+    #: Ventas que volverían a quedar pendientes de facturar.
+    ventas_afectadas: int
+    #: Se informa para dejar claro que estos NO se tocan.
+    comprobantes_en_produccion: int
+
+
+class LimpiezaResultadoOut(LimpiezaOut):
+    borrados: int
+    lotes_borrados: int
+    #: Series cuyo correlativo vuelve a empezar en 1.
+    secuencias: list[str]

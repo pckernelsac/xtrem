@@ -32,33 +32,42 @@ services:
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
       ADMIN_NAME: ${ADMIN_NAME:-}
 
-      # --- Facturación electrónica ---
-      # Proveedor activo. Sin las credenciales del que esté elegido, el sistema
-      # emite en MODO SIMULACIÓN y sin avisar: comprobantes sin validez ante
-      # SUNAT. Por eso RUTA y TOKEN fallan ruidoso cuando el facturador es
-      # Nubefact, que es el caso por defecto.
-      FACTURADOR: ${FACTURADOR:-nubefact}
-      NUBEFACT_RUTA: ${NUBEFACT_RUTA:?falta NUBEFACT_RUTA (panel de Nubefact -> API)}
-      NUBEFACT_TOKEN: ${NUBEFACT_TOKEN:?falta NUBEFACT_TOKEN (panel de Nubefact -> API)}
+      # --- Facturación electrónica: emisión propia ante SUNAT ---
+      # Se emite directo, sin PSE. Sin certificado ni usuario SOL el sistema
+      # opera en MODO SIMULACIÓN **sin avisar**, y los comprobantes no tendrían
+      # validez, así que la clave y el usuario fallan ruidoso si faltan.
+      CERTIFICADO_RUTA: ${CERTIFICADO_RUTA:-/certs/certificado.pfx}
+      CERTIFICADO_CLAVE: ${CERTIFICADO_CLAVE:?falta CERTIFICADO_CLAVE (clave del .pfx)}
+      SOL_USUARIO: ${SOL_USUARIO:?falta SOL_USUARIO (usuario SOL secundario)}
+      SOL_CLAVE: ${SOL_CLAVE:?falta SOL_CLAVE}
+      # true emite ante SUNAT con validez legal. Dejarlo en false mientras se
+      # prueba: los documentos van al ambiente de pruebas y no valen.
+      SUNAT_PRODUCCION: ${SUNAT_PRODUCCION:-false}
 
-      # Series habilitadas EN LA CUENTA; no son libres. Demo usa BBB1/FFF1, y
-      # con las de producción (B001/F001) una cuenta demo rechaza la emisión.
+      # Series autorizadas por SUNAT.
       SERIE_BOLETA: ${SERIE_BOLETA:-B001}
       SERIE_FACTURA: ${SERIE_FACTURA:-F001}
       SERIE_NC_BOLETA: ${SERIE_NC_BOLETA:-BC01}
       SERIE_NC_FACTURA: ${SERIE_NC_FACTURA:-FC01}
 
-      # Proveedor anterior: sólo se usa con FACTURADOR=factpro.
-      FACTPRO_BASE_URL: ${FACTPRO_BASE_URL:-https://api.factpro.la/api/v3}
-      FACTPRO_TOKEN: ${FACTPRO_TOKEN:-}
-
-      # Consulta DNI/RUC, independiente del facturador.
+      # Consulta DNI/RUC, independiente de la facturación.
       APISPERU_URL: ${APISPERU_URL:-https://dniruc.apisperu.com/api/v1}
       APISPERU_TOKEN: ${APISPERU_TOKEN:-}
 
+      # Datos del emisor: viajan dentro del XML y deben coincidir con el padrón.
       EMISOR_RUC: ${EMISOR_RUC:-}
       EMISOR_RAZON_SOCIAL: ${EMISOR_RAZON_SOCIAL:-}
-    # Sin volúmenes: las fotos de productos viven en la base (tabla
+      EMISOR_NOMBRE_COMERCIAL: ${EMISOR_NOMBRE_COMERCIAL:-}
+      EMISOR_UBIGEO: ${EMISOR_UBIGEO:-120101}
+      EMISOR_DIRECCION: ${EMISOR_DIRECCION:-}
+      EMISOR_DEPARTAMENTO: ${EMISOR_DEPARTAMENTO:-JUNIN}
+      EMISOR_PROVINCIA: ${EMISOR_PROVINCIA:-HUANCAYO}
+      EMISOR_DISTRITO: ${EMISOR_DISTRITO:-HUANCAYO}
+    volumes:
+      # El certificado digital se monta de sólo lectura; nunca va en la imagen
+      # ni en el repositorio. En Dokploy se sube a esta ruta del host.
+      - ../files/certs:/certs:ro
+    # Sin más volúmenes: las fotos de productos viven en la base (tabla
     # `producto_fotos`) y los PDF se renderizan al vuelo. El contenedor es
     # desechable, todo el estado está en Postgres.
     networks:

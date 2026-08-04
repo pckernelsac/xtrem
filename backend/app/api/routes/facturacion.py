@@ -65,7 +65,7 @@ def conteos(
     return ConteoComprobantes(
         todas=sum(por_estado.values()),
         por_estado=por_estado,
-        modo_simulacion=settings.factpro_simulado,
+        modo_simulacion=settings.facturacion_simulada,
     )
 
 

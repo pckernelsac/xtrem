@@ -44,3 +44,8 @@ dist-ssr/
 Thumbs.db
 .idea/
 .vscode/
+
+# Certificados digitales: nunca al repositorio.
+certs/
+*.pfx
+*.p12

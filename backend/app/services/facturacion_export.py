@@ -20,7 +20,7 @@ from app.models.comprobante import (
     ComprobanteElectronico,
     EstadoComprobante,
 )
-from app.services.factpro_catalogos import TIPO_COMPROBANTE_SUNAT
+from app.services.comprobante_pdf import TIPO_SUNAT as TIPO_COMPROBANTE_SUNAT
 from app.services.facturacion import desglosar_igv
 from app.services.ficha_pdf import EMPRESA
 

@@ -137,9 +137,21 @@ class ComprobanteElectronico(UUIDMixin, TimestampMixin, Base):
     hash_cpe: Mapped[str | None] = mapped_column(String(120))
     qr: Mapped[str | None] = mapped_column(Text)
 
+    #: URLs de los proveedores anteriores. Se conservan por los comprobantes
+    #: históricos; emitiendo directo ya no se usan, porque el archivo es propio.
     xml_url: Mapped[str | None] = mapped_column(String(400))
     pdf_url: Mapped[str | None] = mapped_column(String(400))
     cdr_url: Mapped[str | None] = mapped_column(String(400))
+
+    #: El XML firmado y el CDR, guardados aquí y no en disco ni en un tercero.
+    #: SUNAT obliga a conservarlos cinco años, y el contenedor es desechable.
+    xml_firmado: Mapped[str | None] = mapped_column(Text)
+    cdr_xml: Mapped[str | None] = mapped_column(Text)
+
+    #: Anulado en el ERP pero aún sin comunicar a SUNAT. La baja no es
+    #: inmediata: las facturas van en un lote (RA) y las boletas se anulan
+    #: informándolas en el resumen diario con estado 3.
+    baja_pendiente: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
     #: JSON exacto que se envió y la respuesta cruda: trazabilidad total ante
     #: una observación de SUNAT o una diferencia con FactPro.

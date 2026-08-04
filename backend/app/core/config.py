@@ -48,36 +48,32 @@ class Settings(BaseSettings):
     # CORS
     CORS_ORIGINS: str = "http://localhost:5173"
 
-    # --- Facturación electrónica ---
-    #: Proveedor activo: "nubefact" o "factpro". Se deja conmutable para poder
-    #: volver atrás sin desplegar código si el nuevo proveedor falla.
-    FACTURADOR: str = "nubefact"
+    # --- Facturación electrónica: emisión propia ante SUNAT ---
+    # Se emite directo, sin PSE: el XML se firma aquí con el certificado de la
+    # empresa y se manda a SUNAT. La clave privada no sale de este servidor.
+    #
+    # Ruta al certificado digital (.pfx/.p12) DENTRO del contenedor, montado
+    # como volumen o secreto. Nunca en la imagen ni en el repositorio.
+    CERTIFICADO_RUTA: str = "/certs/certificado.pfx"
+    CERTIFICADO_CLAVE: str = ""
+    #: Usuario SOL **secundario**, no el principal. Se revoca sin tocar el otro.
+    SOL_USUARIO: str = ""
+    SOL_CLAVE: str = ""
+    #: False apunta al ambiente de pruebas: los documentos NO tienen validez.
+    SUNAT_PRODUCCION: bool = False
 
-    # --- Nubefact ---
-    #: RUTA única del cliente, con su UUID. Las cuatro operaciones van al mismo
-    #: sitio por POST; lo que cambia es el campo `operacion` del cuerpo.
-    NUBEFACT_RUTA: str = ""
-    NUBEFACT_TOKEN: str = ""
-    NUBEFACT_TIMEOUT_SEGUNDOS: float = 30.0
-
-    # --- FactPro (proveedor anterior, se conserva para poder volver) ---
-    FACTPRO_BASE_URL: str = "https://api.factpro.la/api/v3"
-    FACTPRO_TOKEN: str = ""
-    # Rutas tomadas de la doc viva (docs.factpro.la), que difieren del prompt.
-    # Configurables por si FactPro las cambia sin tocar código.
-    FACTPRO_PATH_DOCUMENTOS: str = "/documentos"
-    FACTPRO_PATH_ANULAR: str = "/anular"
-    FACTPRO_PATH_CONSULTA: str = "/consulta"
-    FACTPRO_TIMEOUT_SEGUNDOS: float = 30.0
-
-    # Datos del emisor y series autorizadas. Las series las da de alta el
-    # facturador, NO son libres: emitir con una que la cuenta no tenga
-    # habilitada se rechaza con "no puedes emitir comprobantes con esta serie".
-    # Las cuentas demo de Nubefact traen BBB1 y FFF1; en producción se usan las
-    # autorizadas por SUNAT (B001/F001). Nubefact exige 4 caracteres exactos y
-    # que empiecen por B (boletas y sus notas) o F (facturas y sus notas).
+    # Datos del emisor, que van dentro del XML y deben coincidir con el padrón.
     EMISOR_RUC: str = "10431869662"
     EMISOR_RAZON_SOCIAL: str = "ZONA XTREMA BIKES & COMPONENTES"
+    EMISOR_NOMBRE_COMERCIAL: str = ""
+    EMISOR_UBIGEO: str = "120101"
+    EMISOR_DIRECCION: str = "Av. San Carlos N° 177"
+    EMISOR_DEPARTAMENTO: str = "JUNIN"
+    EMISOR_PROVINCIA: str = "HUANCAYO"
+    EMISOR_DISTRITO: str = "HUANCAYO"
+
+    # Series autorizadas por SUNAT. Cuatro caracteres, empezando por F para
+    # facturas y sus notas, y por B para boletas y las suyas.
     SERIE_FACTURA: str = "F001"
     SERIE_BOLETA: str = "B001"
     SERIE_NC_FACTURA: str = "FC01"
@@ -91,33 +87,24 @@ class Settings(BaseSettings):
     APISPERU_TOKEN: str = ""
 
     @property
-    def usa_nubefact(self) -> bool:
-        return self.FACTURADOR.strip().lower() == "nubefact"
-
-    @property
     def consulta_documento_disponible(self) -> bool:
-        """Sin token de APIsPERU, el autocompletado por DNI/RUC no opera.
-
-        Mira **sólo** el token de APIsPERU, que es el único servicio que
-        consulta `consulta_documento.py`. Aceptar aquí el token viejo de FactPro
-        haría que el botón "Buscar" apareciera y luego fallara en la llamada.
-        """
+        """Sin token de APIsPERU, el autocompletado por DNI/RUC no opera."""
         return bool(self.APISPERU_TOKEN.strip())
 
     @property
-    def factpro_simulado(self) -> bool:
-        """Sin credenciales no se llama a SUNAT: se opera en modo simulación.
+    def facturacion_simulada(self) -> bool:
+        """Sin certificado ni credenciales SOL no se llama a SUNAT.
 
         Permite construir y persistir comprobantes con la misma estructura que
-        los reales para desarrollar y demostrar el flujo completo. Poner las
-        credenciales reales conmuta a la emisión efectiva sin más cambios.
-
-        El nombre se conserva porque lo consumen el endpoint de conteos y el
-        frontend; lo que decide es el proveedor activo.
+        los reales para desarrollar y demostrar el flujo completo. Configurar el
+        certificado y el usuario SOL conmuta a la emisión efectiva sin más
+        cambios de código.
         """
-        if self.usa_nubefact:
-            return not (self.NUBEFACT_RUTA.strip() and self.NUBEFACT_TOKEN.strip())
-        return not self.FACTPRO_TOKEN.strip()
+        return not (
+            self.CERTIFICADO_CLAVE.strip()
+            and self.SOL_USUARIO.strip()
+            and self.SOL_CLAVE.strip()
+        )
 
     @property
     def database_url(self) -> str:

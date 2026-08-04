@@ -33,13 +33,18 @@ services:
       ADMIN_NAME: ${ADMIN_NAME:-}
 
       # --- Facturación electrónica: emisión propia ante SUNAT ---
-      # Se emite directo, sin PSE. Sin certificado ni usuario SOL el sistema
-      # opera en MODO SIMULACIÓN **sin avisar**, y los comprobantes no tendrían
-      # validez, así que la clave y el usuario fallan ruidoso si faltan.
+      # Se emite directo, sin PSE. El certificado y las credenciales SOL se
+      # cargan desde Configuración y quedan cifrados en la base, así que estas
+      # variables son sólo el valor inicial y pueden ir vacías.
+      #
+      # Ya no fallan si faltan: obligarlas impediría desplegar a quien va a
+      # cargarlo todo desde la pantalla. Que falte algo tampoco pasa
+      # desapercibido —la pantalla avisa en amarillo de que está en modo
+      # simulación—, que era el motivo de exigirlas antes.
       CERTIFICADO_RUTA: ${CERTIFICADO_RUTA:-/certs/certificado.pfx}
-      CERTIFICADO_CLAVE: ${CERTIFICADO_CLAVE:?falta CERTIFICADO_CLAVE (clave del .pfx)}
-      SOL_USUARIO: ${SOL_USUARIO:?falta SOL_USUARIO (usuario SOL secundario)}
-      SOL_CLAVE: ${SOL_CLAVE:?falta SOL_CLAVE}
+      CERTIFICADO_CLAVE: ${CERTIFICADO_CLAVE:-}
+      SOL_USUARIO: ${SOL_USUARIO:-}
+      SOL_CLAVE: ${SOL_CLAVE:-}
       # true emite ante SUNAT con validez legal. Dejarlo en false mientras se
       # prueba: los documentos van al ambiente de pruebas y no valen.
       SUNAT_PRODUCCION: ${SUNAT_PRODUCCION:-false}

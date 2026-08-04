@@ -33,20 +33,51 @@ CERO = Decimal("0.00")
 
 
 def cadena_qr(comprobante: ComprobanteElectronico) -> str:
-    """Cadena que exige SUNAT dentro del QR, con el pipe como separador."""
-    return "|".join(
-        [
-            settings.EMISOR_RUC,
-            TIPO_SUNAT.get(comprobante.tipo.value, "01"),
-            comprobante.serie,
-            str(comprobante.numero),
-            f"{comprobante.igv or CERO:.2f}",
-            f"{comprobante.total or CERO:.2f}",
-            comprobante.fecha_emision.strftime("%Y-%m-%d"),
-            comprobante.cliente_tipo_documento,
-            comprobante.cliente_numero_documento,
-        ]
-    )
+    """Cadena que exige SUNAT dentro del QR, con el pipe como separador.
+
+    El orden y los campos los fija SUNAT y no admiten variación:
+
+        RUC | TIPO | SERIE | NUMERO | IGV | TOTAL | FECHA | TIPO DOC | NUM DOC | HASH |
+
+    El **código hash** es el `DigestValue` de la firma, y va al final. Sin él la
+    cadena queda incompleta: es lo que permite verificar que el documento
+    impreso se corresponde con el XML firmado, así que un QR sin hash no sirve
+    para comprobar nada. La cadena termina en pipe, como en la especificación.
+
+    El RUC sale del propio comprobante y no de la configuración: si el emisor
+    cambiara, un documento antiguo debe seguir mostrando el RUC con el que se
+    emitió.
+    """
+    campos = [
+        _ruc_emisor(comprobante),
+        TIPO_SUNAT.get(comprobante.tipo.value, "01"),
+        comprobante.serie,
+        str(comprobante.numero),
+        f"{comprobante.igv or CERO:.2f}",
+        f"{comprobante.total or CERO:.2f}",
+        comprobante.fecha_emision.strftime("%Y-%m-%d"),
+        comprobante.cliente_tipo_documento,
+        comprobante.cliente_numero_documento,
+        comprobante.hash_cpe or "",
+    ]
+    return "|".join(campos) + "|"
+
+
+def _ruc_emisor(comprobante: ComprobanteElectronico) -> str:
+    """RUC con el que se emitió, leído del XML firmado si está disponible.
+
+    Cae a la configuración actual sólo si el comprobante no guarda el XML, que
+    es el caso de los documentos anteriores a la emisión propia.
+    """
+    xml = comprobante.xml_firmado or ""
+    marca = "<cbc:ID schemeID=\"6\""
+    inicio = xml.find(marca)
+    if inicio != -1:
+        cierre = xml.find("</cbc:ID>", inicio)
+        valor = xml[xml.find(">", inicio) + 1 : cierre].strip()
+        if valor.isdigit() and len(valor) == 11:
+            return valor
+    return settings.EMISOR_RUC
 
 
 def _qr_data_url(texto: str) -> str:

@@ -46,7 +46,7 @@ from app.models.comprobante import (
     TipoLote,
 )
 from app.services import sunat_adaptador
-from app.services.facturacion import certificado_de_la_empresa, credenciales_sol
+from app.services.facturacion import certificado_de_la_empresa, credenciales_sol, en_simulacion
 
 #: Plazo de SUNAT para comunicar el resumen. Se usa sólo para avisar: pasado
 #: este margen, lo pendiente deja de ser un olvido y pasa a ser un problema.
@@ -179,7 +179,7 @@ def _enviar(
     for comprobante in comprobantes:
         comprobante.lote_id = lote.id
 
-    if settings.facturacion_simulada:
+    if en_simulacion(db):
         lote.estado = EstadoLote.ACEPTADO
         lote.es_simulado = True
         lote.codigo_sunat = "0"
@@ -189,7 +189,7 @@ def _enviar(
         return lote
 
     try:
-        ticket, xml = emitir_lote(documento, certificado_de_la_empresa(), credenciales_sol())
+        ticket, xml = emitir_lote(documento, certificado_de_la_empresa(db), credenciales_sol(db))
     except ErrorSunat as exc:
         lote.estado = EstadoLote.ERROR
         lote.mensaje_error = exc.mensaje[:1000]
@@ -232,7 +232,7 @@ def generar_resumen(
 
     correlativo = _siguiente_correlativo(db, TipoLote.RESUMEN, hoy)
     documento = ResumenDiario(
-        emisor=sunat_adaptador.emisor_configurado(),
+        emisor=sunat_adaptador.emisor_configurado(db),
         fecha_referencia=dia,
         fecha_emision=hoy,
         correlativo=correlativo,
@@ -269,7 +269,7 @@ def generar_baja(db: Session, actor_id: uuid.UUID | None) -> LoteSunat:
     correlativo = _siguiente_correlativo(db, TipoLote.BAJA, hoy)
 
     documento = ComunicacionBaja(
-        emisor=sunat_adaptador.emisor_configurado(),
+        emisor=sunat_adaptador.emisor_configurado(db),
         fecha_referencia=dia,
         fecha_emision=hoy,
         correlativo=correlativo,
@@ -313,7 +313,7 @@ def recoger_cdr(db: Session, lote: LoteSunat) -> LoteSunat:
         return lote
 
     try:
-        respuesta = consultar_ticket(credenciales_sol(), lote.ticket)
+        respuesta = consultar_ticket(credenciales_sol(db), lote.ticket)
     except ErrorSunat as exc:
         # No se marca el lote como fallido: el envío sí llegó y el ticket sigue
         # siendo válido. Lo que falló es la consulta, y se reintenta.

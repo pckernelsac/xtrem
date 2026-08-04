@@ -21,6 +21,7 @@ from app.models.comprobante import (
     TipoComprobante,
     TipoLote,
 )
+from app.models.configuracion import ConfiguracionSunat
 from app.models.intento_login import IntentoLogin
 from app.models.ficha import (
     EstadoFicha,

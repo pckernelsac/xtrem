@@ -56,19 +56,11 @@ def _dos(valor: Decimal) -> Decimal:
     return valor.quantize(CENTIMO, rounding=ROUND_HALF_UP)
 
 
-def emisor_configurado() -> Emisor:
-    return Emisor(
-        ruc=settings.EMISOR_RUC,
-        razon_social=settings.EMISOR_RAZON_SOCIAL,
-        nombre_comercial=settings.EMISOR_NOMBRE_COMERCIAL or settings.EMISOR_RAZON_SOCIAL,
-        direccion=Direccion(
-            ubigeo=settings.EMISOR_UBIGEO,
-            direccion=settings.EMISOR_DIRECCION,
-            departamento=settings.EMISOR_DEPARTAMENTO,
-            provincia=settings.EMISOR_PROVINCIA,
-            distrito=settings.EMISOR_DISTRITO,
-        ),
-    )
+def emisor_configurado(db) -> Emisor:
+    """Emisor vigente. Lo cargado desde la interfaz manda sobre el entorno."""
+    from app.services import configuracion_sunat
+
+    return configuracion_sunat.resolver(db).emisor
 
 
 def receptor_de(venta: Venta) -> Receptor:
@@ -149,7 +141,7 @@ def _linea(item: VentaItem, total: Decimal) -> Linea:
 
 
 def comprobante_de_venta(
-    venta: Venta, tipo: TipoComprobante, serie: str, correlativo: int
+    db, venta: Venta, tipo: TipoComprobante, serie: str, correlativo: int
 ) -> Comprobante:
     """Arma el comprobante a partir de la venta. El correlativo lo da el ERP."""
     totales = _totales_de_linea(venta)
@@ -158,7 +150,7 @@ def comprobante_de_venta(
         serie=serie,
         correlativo=correlativo,
         fecha_emision=hoy_local(),
-        emisor=emisor_configurado(),
+        emisor=emisor_configurado(db),
         receptor=receptor_de(venta),
         lineas=[_linea(item, total) for item, total in zip(venta.items, totales, strict=True)],
         observaciones=(venta.notas or "")[:500],
@@ -166,14 +158,14 @@ def comprobante_de_venta(
 
 
 def nota_de_credito(
-    comprobante: ComprobanteElectronico, serie: str, correlativo: int, motivo: str
+    db, comprobante: ComprobanteElectronico, serie: str, correlativo: int, motivo: str
 ) -> Comprobante:
     """Nota de crédito que anula un comprobante ya aceptado por SUNAT."""
     venta = comprobante.venta
     if venta is None:
         raise ValueError("El comprobante no tiene venta asociada")
 
-    nota = comprobante_de_venta(venta, TipoComprobante.NOTA_CREDITO, serie, correlativo)
+    nota = comprobante_de_venta(db, venta, TipoComprobante.NOTA_CREDITO, serie, correlativo)
     nota.referencia = Referencia(
         tipo_documento=TIPO_COMPROBANTE[comprobante.tipo],
         serie_numero=comprobante.numero_completo,

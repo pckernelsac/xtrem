@@ -10,6 +10,7 @@ import {
   Package,
   Receipt,
   ScrollText,
+  Settings,
   ShieldCheck,
   ShoppingCart,
   Users,
@@ -44,6 +45,7 @@ const NAV: NavItem[] = [
   { to: "/usuarios", label: "Usuarios", icon: Users, permission: "usuarios.ver" },
   { to: "/roles", label: "Roles", icon: ShieldCheck, permission: "roles.ver" },
   { to: "/auditoria", label: "Auditoría", corto: "Auditoría", icon: ScrollText, permission: "auditoria.ver" },
+  { to: "/configuracion", label: "Configuración", corto: "Config.", icon: Settings, permission: "configuracion.ver" },
 ]
 
 export function Sidebar({

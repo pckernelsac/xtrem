@@ -1,8 +1,11 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
 from app.api.router import api_router
+from app.services import programador
 from app.api.routes import publico, publico_comprobante, publico_venta
 from app.core.audit import AuditMiddleware
 from app.core.config import settings
@@ -43,7 +46,23 @@ TAGS = [
 # en desarrollo. En producción los tres endpoints quedan apagados (404).
 _docs_habilitados = settings.es_desarrollo
 
+@asynccontextmanager
+async def _ciclo_de_vida(app: FastAPI):
+    """Arranca y para las tareas de fondo con la aplicación.
+
+    Aquí vive el proceso que recoge de SUNAT los CDR de los resúmenes: sin él
+    los tickets se quedarían sin resolver, porque nadie va a pulsar un botón
+    cada mañana.
+    """
+    tarea = programador.iniciar()
+    try:
+        yield
+    finally:
+        await programador.detener(tarea)
+
+
 app = FastAPI(
+    lifespan=_ciclo_de_vida,
     title=settings.PROJECT_NAME,
     version="1.0.0",
     description=DESCRIPCION,

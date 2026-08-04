@@ -44,7 +44,7 @@ from app.models.comprobante import (
 )
 from app.models.cliente import TipoDocumento
 from app.models.venta import EstadoVenta, TipoVenta, Venta
-from app.services import sunat_adaptador
+from app.services import configuracion_sunat, sunat_adaptador
 
 #: Estados en los que el comprobante sigue "vivo": bloquean re-emitir la venta.
 ESTADOS_VIGENTES = {
@@ -74,38 +74,23 @@ def desglosar_igv(total: Decimal) -> tuple[Decimal, Decimal, Decimal]:
     return base, total - base, total
 
 
-@lru_cache(maxsize=1)
-def certificado_de_la_empresa() -> Certificado:
-    """Carga el certificado una vez y lo deja en memoria.
+def certificado_de_la_empresa(db: Session) -> Certificado:
+    """Certificado listo para firmar, según la configuración vigente.
 
-    Se cachea porque abrir el PKCS#12 implica descifrarlo, y eso ocurriría en
-    cada emisión. El proceso se reinicia al renovar el certificado.
+    Se resuelve en cada emisión y **no se cachea**: cambiar el certificado desde
+    la interfaz debe surtir efecto sin reiniciar el contenedor, que es justo
+    para lo que sirve poder cargarlo desde ahí.
     """
-    ruta = Path(settings.CERTIFICADO_RUTA)
-    if not ruta.is_file():
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=(
-                f"No se encuentra el certificado digital en {ruta}. Móntalo en el "
-                "contenedor y define CERTIFICADO_CLAVE."
-            ),
-        )
-    try:
-        return Certificado.desde_pfx(ruta.read_bytes(), settings.CERTIFICADO_CLAVE)
-    except ErrorDeFirma as exc:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=f"El certificado digital no se pudo abrir: {exc}",
-        ) from exc
+    return configuracion_sunat.certificado_cargado(configuracion_sunat.resolver(db))
 
 
-def credenciales_sol() -> Credenciales:
-    return Credenciales(
-        ruc=settings.EMISOR_RUC,
-        usuario_sol=settings.SOL_USUARIO,
-        clave_sol=settings.SOL_CLAVE,
-        produccion=settings.SUNAT_PRODUCCION,
-    )
+def credenciales_sol(db: Session) -> Credenciales:
+    return configuracion_sunat.credenciales(configuracion_sunat.resolver(db))
+
+
+def en_simulacion(db: Session) -> bool:
+    """Sin certificado o sin credenciales no se llama a SUNAT."""
+    return not configuracion_sunat.resolver(db).completa
 
 
 def _siguiente_numero(db: Session, serie: str) -> int:
@@ -146,11 +131,10 @@ def _tipo_para(venta: Venta) -> TipoComprobante:
     return TipoComprobante.BOLETA
 
 
-def _serie_para(tipo: TipoComprobante) -> str:
+def _serie_para(db: Session, tipo: TipoComprobante) -> str:
+    config = configuracion_sunat.resolver(db)
     return (
-        settings.SERIE_FACTURA
-        if tipo is TipoComprobante.FACTURA
-        else settings.SERIE_BOLETA
+        config.serie_factura if tipo is TipoComprobante.FACTURA else config.serie_boleta
     )
 
 
@@ -224,7 +208,7 @@ def emitir_desde_venta(
         )
 
     tipo = _tipo_para(venta)
-    serie = _serie_para(tipo)
+    serie = _serie_para(db, tipo)
 
     if (
         tipo is TipoComprobante.BOLETA
@@ -242,7 +226,7 @@ def emitir_desde_venta(
     numero = _numero_reservado(db, venta.id, serie) or _siguiente_numero(db, serie)
 
     try:
-        documento = sunat_adaptador.comprobante_de_venta(venta, tipo, serie, numero)
+        documento = sunat_adaptador.comprobante_de_venta(db, venta, tipo, serie, numero)
     except ValueError as exc:
         # La librería valida antes de enviar: un error aquí es un dato mal
         # formado, y decirlo así ahorra descifrar un código de SUNAT.
@@ -270,8 +254,8 @@ def emitir_desde_venta(
         usuario_id=actor_id,
     )
 
-    if settings.facturacion_simulada:
-        xml, digest = _xml_simulado(documento)
+    if en_simulacion(db):
+        xml, digest = _xml_simulado(db, documento)
         _aplicar(comprobante, _respuesta_simulada(documento.numero), xml, digest, True)
         db.add(comprobante)
         db.commit()
@@ -280,7 +264,7 @@ def emitir_desde_venta(
 
     try:
         respuesta, xml, digest = emitir(
-            documento, certificado_de_la_empresa(), credenciales_sol()
+            documento, certificado_de_la_empresa(db), credenciales_sol(db)
         )
     except ErrorSunat as exc:
         # Se persiste el intento fallido con su número reservado, para que el
@@ -302,14 +286,14 @@ def emitir_desde_venta(
     return comprobante
 
 
-def _xml_simulado(documento) -> tuple[bytes, str]:
+def _xml_simulado(db: Session, documento) -> tuple[bytes, str]:
     """XML firmado con el certificado si lo hay; si no, sin firmar.
 
     En simulación interesa que el XML exista y sea inspeccionable, no que esté
     firmado: puede no haber certificado en la máquina de desarrollo.
     """
     try:
-        return generar_xml(documento, certificado_de_la_empresa())
+        return generar_xml(documento, certificado_de_la_empresa(db))
     except HTTPException:
         from lxml import etree
 

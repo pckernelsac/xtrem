@@ -5,6 +5,7 @@ from app.api.routes import (
     bicicletas,
     caja,
     clientes,
+    configuracion,
     facturacion,
     fichas,
     inventario,
@@ -26,5 +27,6 @@ api_router.include_router(inventario.router)
 api_router.include_router(ventas.router)
 api_router.include_router(caja.router)
 api_router.include_router(facturacion.router)
+api_router.include_router(configuracion.router)
 api_router.include_router(reportes.router)
 api_router.include_router(sistema.router)

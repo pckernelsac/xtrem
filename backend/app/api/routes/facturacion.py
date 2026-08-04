@@ -35,6 +35,7 @@ from app.services.facturacion import (
     anular_comprobante,
     consultar_estado,
     emitir_desde_venta,
+    en_simulacion,
 )
 from app.services.facturacion_export import exportar_comprobantes_excel
 from app.services.whatsapp import enlace_whatsapp, mensaje_comprobante, normalizar_telefono
@@ -76,7 +77,7 @@ def conteos(
     return ConteoComprobantes(
         todas=sum(por_estado.values()),
         por_estado=por_estado,
-        modo_simulacion=settings.facturacion_simulada,
+        modo_simulacion=en_simulacion(db),
     )
 
 

@@ -13,6 +13,7 @@ import FichasPage from "@/pages/FichasPage"
 import InventarioPage from "@/pages/InventarioPage"
 import KardexPage from "@/pages/KardexPage"
 import AuditoriaPage from "@/pages/AuditoriaPage"
+import ConfiguracionPage from "@/pages/ConfiguracionPage"
 import CajaPage from "@/pages/CajaPage"
 import DocumentoDetailPage from "@/pages/DocumentoDetailPage"
 import DocumentosPage from "@/pages/DocumentosPage"
@@ -219,6 +220,14 @@ export default function App() {
             element={
               <RequirePermission permission="auditoria.ver">
                 <AuditoriaPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="configuracion"
+            element={
+              <RequirePermission permission="configuracion.ver">
+                <ConfiguracionPage />
               </RequirePermission>
             }
           />

@@ -55,6 +55,17 @@ PERMISSIONS: list[PermissionDef] = [
     *_crud("usuarios", "usuarios"),
     *_crud("roles", "roles y permisos"),
     PermissionDef("auditoria.ver", "auditoria", "Ver la bitácora de auditoría"),
+    # La configuración de facturación custodia el certificado digital y las
+    # claves SOL: con ellos se puede emitir en nombre de la empresa, así que va
+    # aparte y no se reparte con el resto de permisos de facturación.
+    PermissionDef(
+        "configuracion.ver", "configuracion", "Ver la configuración de facturación"
+    ),
+    PermissionDef(
+        "configuracion.editar",
+        "configuracion",
+        "Cargar el certificado digital y las claves SOL",
+    ),
 ]
 
 PERMISSION_CODES: set[str] = {p.code for p in PERMISSIONS}

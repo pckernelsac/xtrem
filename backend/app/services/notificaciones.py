@@ -151,4 +151,35 @@ def calcular(db: Session, usuario: User) -> list[dict]:
                 )
             )
 
+    # --- Facturación: boletas emitidas pero todavía sin declarar ---
+    # Emitir una boleta no la declara: SUNAT sólo la da por informada cuando
+    # llega en el resumen diario, y hay plazo. Sin este aviso, el olvido no se
+    # nota hasta que ya es una infracción.
+    if "facturacion.ver" in permisos:
+        from app.services.lotes_sunat import DIAS_PLAZO_RESUMEN, dias_pendientes
+
+        pendientes = [d for d in dias_pendientes(db) if d["dias_transcurridos"] >= 1]
+        if pendientes:
+            boletas = sum(d["boletas"] for d in pendientes)
+            vencidos = [d for d in pendientes if d["fuera_de_plazo"]]
+            antiguo = max(d["dias_transcurridos"] for d in pendientes)
+            alertas.append(
+                _alerta(
+                    "boletas_sin_declarar",
+                    "danger" if vencidos else "warning",
+                    "Boletas sin declarar a SUNAT",
+                    (
+                        f"{boletas} boleta(s) de {len(pendientes)} día(s) sin resumen. "
+                        + (
+                            f"La más antigua lleva {antiguo} días y ya pasó el plazo "
+                            f"de {DIAS_PLAZO_RESUMEN}."
+                            if vencidos
+                            else f"La más antigua lleva {antiguo} día(s)."
+                        )
+                    ),
+                    "/documentos",
+                    boletas,
+                )
+            )
+
     return alertas

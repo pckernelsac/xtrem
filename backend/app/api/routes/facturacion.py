@@ -1,5 +1,5 @@
 import uuid
-from datetime import date
+from datetime import date, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy import func, or_, select
@@ -8,11 +8,21 @@ from sqlalchemy.orm import Session
 from app.api.deps import require_permission
 from app.core.config import settings
 from app.db.session import get_db
-from app.models.comprobante import ComprobanteElectronico, EstadoComprobante, TipoComprobante
+from app.core.fechas import hoy_local
+from app.models.comprobante import (
+    ComprobanteElectronico,
+    EstadoComprobante,
+    LoteSunat,
+    TipoComprobante,
+    TipoLote,
+)
 from app.models.user import User
 from app.models.venta import Venta
 from app.schemas.comprobante import (
     AnularComprobanteIn,
+    DiaPendienteOut,
+    GenerarResumenIn,
+    LoteOut,
     CompartirComprobanteOut,
     ComprobanteDetail,
     ComprobanteOut,
@@ -20,6 +30,7 @@ from app.schemas.comprobante import (
     ConteoComprobantes,
     EmitirIn,
 )
+from app.services import lotes_sunat
 from app.services.facturacion import (
     anular_comprobante,
     consultar_estado,
@@ -249,3 +260,84 @@ def consultar(
     """Refresca el estado del comprobante contra SUNAT."""
     comprobante = _get(db, comprobante_id)
     return consultar_estado(db, comprobante)
+
+
+# --------------------------------------------------------------------------
+# Resumen diario de boletas y comunicación de baja
+#
+# Emitir una boleta NO la declara ante SUNAT: hay que informarla en un resumen
+# diario, y hay plazo. Estas rutas son las que cierran esa obligación.
+# --------------------------------------------------------------------------
+@router.get("/lotes/pendientes", response_model=list[DiaPendienteOut])
+def dias_pendientes(
+    db: Session = Depends(get_db),
+    _: User = Depends(require_permission("facturacion.ver")),
+) -> list[dict]:
+    """Días con boletas emitidas que todavía no se han declarado."""
+    return lotes_sunat.dias_pendientes(db)
+
+
+@router.get("/lotes", response_model=list[LoteOut])
+def list_lotes(
+    db: Session = Depends(get_db),
+    _: User = Depends(require_permission("facturacion.ver")),
+    tipo: TipoLote | None = Query(default=None),
+    limite: int = Query(default=50, ge=1, le=200),
+) -> list[LoteSunat]:
+    stmt = select(LoteSunat).order_by(LoteSunat.created_at.desc()).limit(limite)
+    if tipo:
+        stmt = stmt.where(LoteSunat.tipo == tipo)
+    return list(db.scalars(stmt).unique().all())
+
+
+@router.post("/lotes/resumen", response_model=LoteOut, status_code=status.HTTP_201_CREATED)
+def generar_resumen(
+    data: GenerarResumenIn,
+    db: Session = Depends(get_db),
+    actor: User = Depends(require_permission("facturacion.emitir")),
+) -> LoteSunat:
+    """Declara ante SUNAT las boletas de un día.
+
+    Por defecto, las de **ayer**: la jornada de hoy sigue abierta y podrían
+    emitirse más boletas después de mandar el resumen, que ya no entrarían.
+    """
+    dia = data.fecha or (hoy_local() - timedelta(days=1))
+    return lotes_sunat.generar_resumen(db, dia, actor.id)
+
+
+@router.post("/lotes/baja", response_model=LoteOut, status_code=status.HTTP_201_CREATED)
+def generar_baja(
+    db: Session = Depends(get_db),
+    actor: User = Depends(require_permission("facturacion.anular")),
+) -> LoteSunat:
+    """Comunica a SUNAT la baja de las facturas anuladas en el ERP."""
+    return lotes_sunat.generar_baja(db, actor.id)
+
+
+@router.post("/lotes/{lote_id}/consultar", response_model=LoteOut)
+def consultar_lote(
+    lote_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_permission("facturacion.ver")),
+) -> LoteSunat:
+    """Recoge el CDR de un lote ya enviado.
+
+    SUNAT procesa estos documentos en diferido; si todavía no ha terminado, el
+    lote se devuelve igual y hay que volver más tarde.
+    """
+    lote = db.get(LoteSunat, lote_id)
+    if lote is None:
+        raise HTTPException(status_code=404, detail="Lote no encontrado")
+    return lotes_sunat.recoger_cdr(db, lote)
+
+
+@router.post("/lotes/recoger", response_model=list[LoteOut])
+def recoger_pendientes(
+    db: Session = Depends(get_db),
+    _: User = Depends(require_permission("facturacion.ver")),
+) -> list[LoteSunat]:
+    """Intenta cerrar todos los lotes que esperan CDR.
+
+    Pensado para un proceso programado: los tickets no se resuelven solos.
+    """
+    return lotes_sunat.recoger_pendientes(db)

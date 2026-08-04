@@ -4,7 +4,12 @@ from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.models.comprobante import EstadoComprobante, TipoComprobante
+from app.models.comprobante import (
+    EstadoComprobante,
+    EstadoLote,
+    TipoComprobante,
+    TipoLote,
+)
 
 
 class EmitirIn(BaseModel):
@@ -90,3 +95,41 @@ class ConteoComprobantes(BaseModel):
     por_estado: dict[str, int]
     #: Advierte a la UI que estos comprobantes NO son válidos ante SUNAT.
     modo_simulacion: bool
+
+
+class LoteOut(BaseModel):
+    """Un resumen diario o una comunicación de baja enviados a SUNAT."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    tipo: TipoLote
+    estado: EstadoLote
+    identificador: str
+    fecha_referencia: date
+    fecha_emision: date
+    ticket: str | None
+    codigo_sunat: str | None
+    descripcion_sunat: str | None
+    mensaje_error: str | None
+    es_simulado: bool
+    cantidad: int
+    pendiente_de_cdr: bool
+    created_at: datetime
+
+
+class DiaPendienteOut(BaseModel):
+    """Un día con boletas emitidas pero todavía sin declarar."""
+
+    fecha: date
+    boletas: int
+    total: Decimal | None
+    dias_transcurridos: int
+    #: Pasado el plazo de SUNAT deja de ser un olvido y pasa a ser un problema.
+    fuera_de_plazo: bool
+
+
+class GenerarResumenIn(BaseModel):
+    #: Día de las boletas que se declaran. Por defecto, ayer: la jornada de hoy
+    #: sigue abierta y se informa mañana.
+    fecha: date | None = None

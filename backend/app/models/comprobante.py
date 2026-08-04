@@ -106,6 +106,7 @@ class ComprobanteElectronico(UUIDMixin, TimestampMixin, Base):
         ForeignKey("ventas.id", ondelete="RESTRICT"), index=True
     )
     venta: Mapped["Venta | None"] = relationship(lazy="joined")  # noqa: F821
+    lote: Mapped["LoteSunat | None"] = relationship(back_populates="comprobantes")
 
     #: Para notas de crédito: el comprobante que anulan/corrigen.
     documento_afectado_id: Mapped[uuid.UUID | None] = mapped_column(
@@ -153,6 +154,13 @@ class ComprobanteElectronico(UUIDMixin, TimestampMixin, Base):
     #: informándolas en el resumen diario con estado 3.
     baja_pendiente: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
+    #: Lote en el que se informó a SUNAT. Las boletas **deben** ir en un
+    #: resumen diario; mientras esto sea nulo, la boleta está emitida pero no
+    #: declarada, que es un incumplimiento con plazo.
+    lote_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("lotes_sunat.id", ondelete="SET NULL"), index=True
+    )
+
     #: JSON exacto que se envió y la respuesta cruda: trazabilidad total ante
     #: una observación de SUNAT o una diferencia con FactPro.
     payload_enviado: Mapped[dict | None] = mapped_column(JSONB)
@@ -175,3 +183,102 @@ class ComprobanteElectronico(UUIDMixin, TimestampMixin, Base):
     fecha_envio: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
+
+
+class TipoLote(str, enum.Enum):
+    """Documentos que agrupan comprobantes y se procesan en diferido."""
+
+    #: Resumen diario de boletas. Obligatorio: emitir la boleta no la declara.
+    RESUMEN = "RC"
+    #: Comunicación de baja, para anular facturas y sus notas.
+    BAJA = "RA"
+
+
+class EstadoLote(str, enum.Enum):
+    #: Armado pero todavía no enviado.
+    PENDIENTE = "PENDIENTE"
+    #: Enviado; SUNAT devolvió un ticket y lo está procesando.
+    ENVIADO = "ENVIADO"
+    ACEPTADO = "ACEPTADO"
+    RECHAZADO = "RECHAZADO"
+    ERROR = "ERROR"
+
+
+ETIQUETAS_ESTADO_LOTE: dict[str, str] = {
+    "PENDIENTE": "Pendiente",
+    "ENVIADO": "En proceso",
+    "ACEPTADO": "Aceptado",
+    "RECHAZADO": "Rechazado",
+    "ERROR": "Error",
+}
+
+
+class LoteSunat(UUIDMixin, TimestampMixin, Base):
+    """Un resumen diario o una comunicación de baja enviados a SUNAT.
+
+    Se guarda como entidad propia y no como un campo del comprobante porque el
+    proceso es **asíncrono**: se envía, SUNAT devuelve un ticket y el CDR se
+    recoge después. Entre esos dos momentos hay que saber qué se mandó, cuándo y
+    con qué ticket, o el resumen se pierde y las boletas quedan sin declarar.
+    """
+
+    __tablename__ = "lotes_sunat"
+    __table_args__ = (
+        Index("ix_lotes_sunat_estado", "estado"),
+        Index("ux_lotes_sunat_identificador", "identificador", unique=True),
+    )
+
+    # `values_callable` hace que se guarde el VALOR ("RC"/"RA") y no el nombre
+    # del miembro, que es lo que SQLAlchemy persiste por defecto. Así la base
+    # habla el idioma de SUNAT y el código conserva nombres legibles.
+    tipo: Mapped[TipoLote] = mapped_column(
+        Enum(
+            TipoLote,
+            name="tipo_lote",
+            values_callable=lambda enum: [miembro.value for miembro in enum],
+        ),
+        nullable=False,
+    )
+    estado: Mapped[EstadoLote] = mapped_column(
+        Enum(EstadoLote, name="estado_lote"), default=EstadoLote.PENDIENTE, nullable=False
+    )
+
+    #: RC-20260804-1 o RA-20260804-1. Único: SUNAT rechaza un identificador
+    #: repetido, y repetirlo suele significar que se envió dos veces lo mismo.
+    identificador: Mapped[str] = mapped_column(String(30), nullable=False)
+    #: Día de los comprobantes que se informan.
+    fecha_referencia: Mapped[date] = mapped_column(Date, nullable=False)
+    #: Día en que se comunica. SUNAT da un plazo desde la referencia.
+    fecha_emision: Mapped[date] = mapped_column(Date, nullable=False)
+    correlativo: Mapped[int] = mapped_column(nullable=False)
+
+    #: Lo devuelve SUNAT al aceptar el envío; con él se recoge el CDR después.
+    ticket: Mapped[str | None] = mapped_column(String(40), index=True)
+
+    codigo_sunat: Mapped[str | None] = mapped_column(String(10))
+    descripcion_sunat: Mapped[str | None] = mapped_column(String(500))
+    mensaje_error: Mapped[str | None] = mapped_column(Text)
+
+    #: El archivo es nuestro, igual que en los comprobantes.
+    xml_firmado: Mapped[str | None] = mapped_column(Text)
+    cdr_xml: Mapped[str | None] = mapped_column(Text)
+
+    es_simulado: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+
+    usuario_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL")
+    )
+    usuario: Mapped["User | None"] = relationship(lazy="joined")  # noqa: F821
+
+    comprobantes: Mapped[list["ComprobanteElectronico"]] = relationship(
+        back_populates="lote", lazy="selectin"
+    )
+
+    @property
+    def cantidad(self) -> int:
+        return len(self.comprobantes)
+
+    @property
+    def pendiente_de_cdr(self) -> bool:
+        """Enviado pero sin respuesta: hay que volver a consultar el ticket."""
+        return self.estado is EstadoLote.ENVIADO and bool(self.ticket)

@@ -16,7 +16,10 @@ from app.models.cliente import Cliente, TipoDocumento
 from app.models.comprobante import (
     ComprobanteElectronico,
     EstadoComprobante,
+    EstadoLote,
+    LoteSunat,
     TipoComprobante,
+    TipoLote,
 )
 from app.models.intento_login import IntentoLogin
 from app.models.ficha import (

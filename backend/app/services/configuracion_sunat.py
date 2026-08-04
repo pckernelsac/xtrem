@@ -71,6 +71,28 @@ def _o(valor: str | None, respaldo: str) -> str:
     return (valor or "").strip() or respaldo
 
 
+def _certificado_en_disco() -> Path | None:
+    """Certificado montado en el contenedor, si lo hay.
+
+    `.pfx` y `.p12` son el mismo formato PKCS#12 y las entidades certificadoras
+    peruanas entregan indistintamente uno u otro. Si la ruta configurada no
+    existe, se busca cualquiera de los dos en su carpeta: montar el certificado
+    con el nombre correcto y que el sistema no lo vea por la extensión sería un
+    fallo tonto de diagnosticar.
+    """
+    ruta = Path(settings.CERTIFICADO_RUTA)
+    if ruta.is_file():
+        return ruta
+
+    carpeta = ruta.parent
+    if not carpeta.is_dir():
+        return None
+    candidatos = sorted(
+        p for p in carpeta.iterdir() if p.suffix.lower() in (".pfx", ".p12")
+    )
+    return candidatos[0] if candidatos else None
+
+
 def resolver(db: Session) -> ConfiguracionEfectiva:
     config = obtener(db)
 
@@ -78,8 +100,8 @@ def resolver(db: Session) -> ConfiguracionEfectiva:
     if config.certificado:
         certificado_bytes = descifrar(config.certificado)
     else:
-        ruta = Path(settings.CERTIFICADO_RUTA)
-        if ruta.is_file():
+        ruta = _certificado_en_disco()
+        if ruta is not None:
             certificado_bytes = ruta.read_bytes()
 
     return ConfiguracionEfectiva(

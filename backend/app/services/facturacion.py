@@ -251,6 +251,7 @@ def emitir_desde_venta(
         cliente_tipo_documento=receptor.tipo_documento.value,
         cliente_numero_documento=receptor.numero_documento,
         cliente_denominacion=receptor.razon_social,
+        emitido_en_produccion=configuracion_sunat.resolver(db).produccion,
         usuario_id=actor_id,
     )
 

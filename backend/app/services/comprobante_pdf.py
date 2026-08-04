@@ -135,7 +135,9 @@ def render_comprobante_pdf(comprobante: ComprobanteElectronico) -> bytes:
         "es_simulado": comprobante.es_simulado,
         "anulado": comprobante.baja_pendiente
         or comprobante.estado.value == "ANULADO",
-        "emitido_en_pruebas": not settings.SUNAT_PRODUCCION,
+        # Del propio comprobante, no del ajuste actual: un documento emitido
+        # en pruebas lo sigue siendo aunque el sistema ya esté en producción.
+        "emitido_en_pruebas": not comprobante.emitido_en_produccion,
     }
 
     html = _env().get_template("comprobante.html").render(**contexto)

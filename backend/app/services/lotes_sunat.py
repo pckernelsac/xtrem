@@ -45,7 +45,7 @@ from app.models.comprobante import (
     TipoComprobante,
     TipoLote,
 )
-from app.services import sunat_adaptador
+from app.services import configuracion_sunat, sunat_adaptador
 from app.services.facturacion import certificado_de_la_empresa, credenciales_sol, en_simulacion
 
 #: Plazo de SUNAT para comunicar el resumen. Se usa sólo para avisar: pasado
@@ -246,6 +246,7 @@ def generar_resumen(
         fecha_referencia=dia,
         fecha_emision=hoy,
         correlativo=correlativo,
+        emitido_en_produccion=configuracion_sunat.resolver(db).produccion,
         usuario_id=actor_id,
     )
     db.add(lote)
@@ -295,6 +296,7 @@ def generar_baja(db: Session, actor_id: uuid.UUID | None) -> LoteSunat:
         fecha_referencia=dia,
         fecha_emision=hoy,
         correlativo=correlativo,
+        emitido_en_produccion=configuracion_sunat.resolver(db).produccion,
         usuario_id=actor_id,
     )
     db.add(lote)

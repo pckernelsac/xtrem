@@ -69,23 +69,34 @@ def _secuencias(db: Session) -> list[tuple[str, int]]:
     return [(nombre, valor) for nombre, valor in filas]
 
 
-def corte(aplicar: bool, series_manuales: set[str] | None) -> None:
+def corte(aplicar: bool, series_manuales: set[str] | None, solo_pruebas: bool = False) -> None:
     db = SessionLocal()
     try:
         produccion = _series_de_produccion()
         print(f"Series de producción configuradas: {', '.join(sorted(produccion))}")
 
-        if series_manuales:
+        if solo_pruebas:
+            # Todo lo emitido contra el ambiente de pruebas, sea cual sea su
+            # serie. Es lo que hace falta si ya se probó con la definitiva.
+            fuera = set(
+                db.scalars(
+                    select(ComprobanteElectronico.serie)
+                    .where(ComprobanteElectronico.emitido_en_produccion.is_(False))
+                    .distinct()
+                ).all()
+            )
+            print("Criterio: todo lo emitido en el ambiente de PRUEBAS.")
+        elif series_manuales:
             fuera = series_manuales
         else:
             todas = set(db.scalars(select(ComprobanteElectronico.serie).distinct()).all())
             fuera = {s for s in todas if s.upper() not in produccion}
 
         if not fuera:
-            print("No hay comprobantes de series antiguas. Nada que hacer.")
+            print("No hay nada que retirar. Nada que hacer.")
             return
 
-        print(f"Series a retirar: {', '.join(sorted(fuera))}\n")
+        print(f"Series afectadas: {', '.join(sorted(fuera))}\n")
 
         filas = _resumen(db, fuera)
         total = sum(f[2] for f in filas)
@@ -124,9 +135,25 @@ def corte(aplicar: bool, series_manuales: set[str] | None) -> None:
             ),
             {"series": list(fuera)},
         )
+        # Los lotes que informaron esos comprobantes dejan de tener sentido:
+        # sin ellos quedarían apuntando a documentos que ya no existen.
+        db.execute(
+            text(
+                "UPDATE comprobantes SET lote_id = NULL WHERE serie = ANY(:series)"
+            ),
+            {"series": list(fuera)},
+        )
+        lotes = db.execute(
+            text(
+                "DELETE FROM lotes_sunat WHERE id NOT IN "
+                "(SELECT DISTINCT lote_id FROM comprobantes WHERE lote_id IS NOT NULL)"
+            )
+        ).rowcount
         borrados = db.execute(
             text("DELETE FROM comprobantes WHERE serie = ANY(:series)"), {"series": list(fuera)}
         ).rowcount
+        if lotes:
+            print(f"  resúmenes y bajas eliminados: {lotes}")
 
         # Las secuencias de las series retiradas se eliminan; las de producción
         # se reinician sólo si no tienen comprobantes todavía, para no romper la
@@ -159,7 +186,9 @@ def corte(aplicar: bool, series_manuales: set[str] | None) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Corte de demo a producción del facturador")
+    parser = argparse.ArgumentParser(
+        description="Retira comprobantes de prueba antes de emitir en producción"
+    )
     parser.add_argument(
         "--aplicar",
         action="store_true",
@@ -170,10 +199,18 @@ def main() -> None:
         default="",
         help="Series a retirar, separadas por comas. Por defecto, las que no estén configuradas.",
     )
+    parser.add_argument(
+        "--pruebas",
+        action="store_true",
+        help=(
+            "Retira TODO lo emitido contra el ambiente de pruebas, sin mirar la "
+            "serie. Es lo que hace falta si se probó con la serie definitiva."
+        ),
+    )
     args = parser.parse_args()
 
     manuales = {s.strip().upper() for s in args.series.split(",") if s.strip()}
-    corte(args.aplicar, manuales or None)
+    corte(args.aplicar, manuales or None, args.pruebas)
 
 
 if __name__ == "__main__":

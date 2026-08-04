@@ -170,10 +170,17 @@ class ComprobanteElectronico(UUIDMixin, TimestampMixin, Base):
     motivo_anulacion: Mapped[str | None] = mapped_column(String(300))
     fecha_anulacion: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
-    #: Marca los comprobantes emitidos SIN SUNAT real (sin token FactPro).
-    #: Distingue una demo de un documento tributario válido; nunca debe
-    #: presentarse como legal.
+    #: Marca los comprobantes que NO llegaron a enviarse a SUNAT (sin
+    #: certificado configurado). Nunca deben presentarse como válidos.
     es_simulado: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+
+    #: Ambiente en el que se emitió, congelado al emitir. **No se deduce del
+    #: ajuste actual**: al pasar a producción, los comprobantes de prueba
+    #: seguirían pareciendo válidos y se colarían en el registro del contador,
+    #: que filtra por fecha y no sabría distinguirlos.
+    emitido_en_produccion: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False
+    )
 
     usuario_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL")
@@ -264,6 +271,9 @@ class LoteSunat(UUIDMixin, TimestampMixin, Base):
     cdr_xml: Mapped[str | None] = mapped_column(Text)
 
     es_simulado: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    emitido_en_produccion: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False
+    )
 
     usuario_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL")

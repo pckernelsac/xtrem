@@ -9,9 +9,10 @@ from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.db.session import get_db
 from app.models.comprobante import ComprobanteElectronico
-from app.services import factpro_client
+from app.services import factpro_client, nubefact_client
 
 router = APIRouter(prefix="/c", tags=["público"], include_in_schema=False)
 
@@ -32,9 +33,17 @@ def comprobante_publico(codigo: str, db: Session = Depends(get_db)) -> Response:
     if not comprobante.pdf_url:
         raise HTTPException(status_code=404, detail="El comprobante no tiene PDF disponible")
 
+    # Los comprobantes viejos siguen alojados en el proveedor con el que se
+    # emitieron, pero ambos clientes descargan igual —un GET público—, así que
+    # basta con usar el del proveedor activo.
+    descargar = (
+        nubefact_client.descargar_archivo
+        if settings.usa_nubefact
+        else factpro_client.descargar_archivo
+    )
     try:
-        contenido = factpro_client.descargar_archivo(comprobante.pdf_url)
-    except factpro_client.FactProError as exc:
+        contenido = descargar(comprobante.pdf_url)
+    except (nubefact_client.NubefactError, factpro_client.FactProError) as exc:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail=f"No se pudo obtener el PDF: {exc.mensaje}",

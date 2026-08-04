@@ -1,7 +1,7 @@
 # Zona Xtrema Bikes & Componentes — ERP
 
 ERP web para tienda + taller de bicicletas: fichas de mantenimiento, inventario,
-ventas, caja y facturación electrónica SUNAT vía FactPro.
+ventas, caja y facturación electrónica SUNAT vía Nubefact.
 
 ## Stack
 
@@ -296,64 +296,102 @@ Dos bugs de concurrencia que encontré probando con hilos, no leyendo el código
 Verificado: 6 ventas simultáneas de 3 sobre stock 10 → 3 pasan, 3 reciben `409`
 limpio (no 500), stock final exacto y kardex cuadrado.
 
-## Facturación electrónica (FactPro)
+## Facturación electrónica (Nubefact)
 
-Integración con FactPro para emitir comprobantes a SUNAT. La lógica de mapeo al
-JSON de FactPro está en `services/facturacion.py`; el cliente HTTP en
-`services/factpro_client.py`; los catálogos SUNAT en `services/factpro_catalogos.py`.
+Emisión de comprobantes a SUNAT vía **Nubefact**. El proveedor es conmutable con
+`FACTURADOR` (`nubefact` | `factpro`) para poder volver atrás sin desplegar
+código; `services/facturacion.py` orquesta y delega en el proveedor activo:
+
+| Pieza | Nubefact | FactPro (anterior) |
+|---|---|---|
+| Cliente HTTP | `nubefact_client.py` | `factpro_client.py` |
+| Payload y respuesta | `nubefact_facturacion.py` | `facturacion.py` |
+| Catálogos | `nubefact_catalogos.py` | `factpro_catalogos.py` |
 
 **Tipo de comprobante automático**: factura si el cliente tiene RUC, boleta en
 cualquier otro caso. Una boleta sin cliente identificado (público general) no
 puede superar S/ 700 — límite de SUNAT.
 
-Flujo: venta confirmada → `POST /facturacion/emitir` → construir JSON → enviar a
-FactPro → persistir `ComprobanteElectronico` con XML/PDF/CDR, hash, QR y estado
-SUNAT. La vista **Documentos electrónicos** replica el patrón de FactPro: tabs
-por estado con contador, tabla densa y acciones XML · PDF · CDR por fila.
+Flujo: venta confirmada → `POST /facturacion/emitir` → construir JSON → enviar →
+persistir `ComprobanteElectronico` con XML/PDF/CDR, hash, QR y estado SUNAT.
 
-Anular un comprobante comunica la baja a SUNAT (`/anular`) pero **no revierte la
-venta** (stock ni caja): son operaciones tributaria y comercial independientes.
+Anular comunica la baja a SUNAT pero **no revierte la venta** (stock ni caja):
+son operaciones tributaria y comercial independientes.
+
+### Lo que cambia respecto a FactPro
+
+Dos diferencias de fondo, no de nombres de campo:
+
+- **El correlativo lo lleva este sistema.** FactPro asignaba el número; Nubefact
+  exige que el emisor lo mande, consecutivo desde 1 por tipo de documento. Va por
+  una secuencia de Postgres por serie. Como las secuencias no retroceden en un
+  `ROLLBACK`, un envío fallido dejaría un hueco —que SUNAT observa—, así que el
+  reintento **reutiliza el número reservado** por el intento en `ERROR`.
+- **El IGV se desglosa aquí, línea por línea.** FactPro recibía precios con IGV y
+  desglosaba; Nubefact exige valor unitario sin IGV, subtotal, IGV y total por
+  línea, y valida que la suma cuadre con los totales. El desglose parte del
+  importe final de cada línea y saca la base por división, con el IGV por
+  diferencia: así las tres cifras cuadran siempre al céntimo.
+
+De paso se corrige un fallo que arrastraba FactPro: el **descuento global** de la
+venta no viajaba al comprobante, que salía por un importe mayor al cobrado. Ahora
+se prorratea entre las líneas y el resto del redondeo se carga a la mayor.
+
+Otros cambios: la cabecera `Authorization` va **sin `Bearer`**; las cuatro
+operaciones van a la misma URL distinguidas por el campo `operacion`; el tipo de
+documento del cliente sigue el **catálogo 06 de SUNAT** (RUC = `6`, no el `4`
+propio de FactPro) y la venta de mostrador usa el código oficial `"-"` (VARIOS)
+en vez del apaño de un DNI de ceros.
+
+**Idempotencia**: cada emisión manda un `codigo_unico`. Si el envío llega pero se
+pierde la respuesta, el reintento recibe el error 23 («ya existe») y el sistema
+**recupera el comprobante emitido** en vez de duplicarlo ante SUNAT.
+
+**Anulación diferida**: Nubefact devuelve un ticket y `aceptada_por_sunat: false`
+hasta que SUNAT procesa la baja. El comprobante NO se marca `ANULADO` de entrada;
+queda «Baja en trámite» y se confirma al consultar el estado.
+
+### Series
+
+Las series **no son libres**: las habilita la cuenta del facturador, y emitir con
+una que no esté dada de alta se rechaza con *«no puedes emitir comprobantes con
+esta serie»*. Nubefact exige 4 caracteres exactos, empezando por `B` (boletas y
+sus notas) o `F` (facturas y sus notas). Las cuentas demo traen `BBB1` y `FFF1`;
+en producción se usan las autorizadas por SUNAT. Se configuran en
+`SERIE_BOLETA`, `SERIE_FACTURA`, `SERIE_NC_BOLETA` y `SERIE_NC_FACTURA`.
 
 ### Autenticación y modo
 
-El **Bearer es el token de EMPRESA** (el token de usuario devuelve 401). Se
-configura en `FACTPRO_TOKEN`.
+`NUBEFACT_RUTA` (URL propia con UUID) y `NUBEFACT_TOKEN`, ambos del panel de
+Nubefact, opción **API (Integración)**.
 
-**Sin token, el sistema opera en modo simulación**: construye y persiste los
-comprobantes con la estructura real de FactPro pero sin enviarlos a SUNAT; los
-marca `es_simulado = true` y la UI muestra un aviso. Con token, emite de verdad.
+**Sin esas credenciales el sistema opera en modo simulación**: construye y
+persiste los comprobantes con la estructura real pero sin enviarlos a SUNAT; los
+marca `es_simulado = true` y la UI muestra un aviso.
 
-### Verificado contra la API real (cuenta demo de FactPro)
+### Verificado contra la API real (cuenta demo)
 
-Se probó el flujo completo contra `api.factpro.la` (19 pruebas, cuenta en modo
-demo → sin efecto legal ante SUNAT):
-
-- **Boleta** (cliente DNI) y **factura** (cliente RUC) emitidas y ACEPTADAS.
-- El **PDF real se descarga** desde la URL que devuelve FactPro (HTTP 200 `%PDF`).
-- **Consultar** y **anular** (comunicación de baja) funcionan.
-
-Hallazgos que corrigieron supuestos previos:
-
-- **FactPro usa su propio catálogo de tipo de documento, no el de SUNAT**:
-  DNI = `"1"`, **RUC = `"4"`** (no `"6"`, que da "tipo incorrecto"). La boleta a
-  **público general** (venta de mostrador sin cliente) tampoco acepta el `"0"`
-  del catálogo SUNAT: FactPro exige tipo DNI `"1"` con número `"00000000"`. CE y
-  pasaporte quedan como código plausible pero **sin confirmar** — verificar
-  antes de facturar a un extranjero. Todo centralizado en `factpro_catalogos.py`.
-- Los **errores** llegan como `{"errors":[{"message":"…"}]}`, no como el
-  `mensaje` plano que mostraba la doc. El cliente contempla ambas formas.
-- Las **rutas** reales son `/anular` y `/consulta` (POST), no `/anulacion` ni
-  `/consultar`; configurables en settings.
+- Boleta a público general y **factura** a cliente con RUC emitidas; la factura
+  volvió `aceptada_por_sunat: true` en el acto.
+- Desglose de IGV comprobado con las ventas reales de la base y con casos límite
+  (descuento global indivisible, cantidades fraccionarias, un céntimo, importes
+  grandes): **cuadran todos al céntimo**.
+- Recuperación de duplicado (error 23), consulta de estado, comunicación de baja,
+  PDF público por `/c/{codigo}` y mensaje de WhatsApp.
+- Regresión del flujo de servicios: ficha → nota de venta → boleta encima, sin
+  doble cobro en caja.
 
 ### Pendiente para producción
 
-- La cuenta demo pertenece a un RUC de prueba de FactPro (`20600340647`). Para
-  emitir como Zona Xtrema hay que crear la empresa con RUC `10431869662`,
-  cargar su certificado digital y **pasar la cuenta de demo a producción**
-  (activa la validez ante SUNAT; recomiendan activar la firma 24–48 h antes).
-- Confirmar los códigos de CE y pasaporte.
-- Nota de crédito queda modelada (`TipoComprobante.NOTA_CREDITO`) pero su emisión
-  como flujo propio se difiere; hoy la baja se hace por `/anular`.
+- **Pasar la cuenta de Nubefact a producción** y cambiar las series demo
+  (`BBB1`/`FFF1`) por las autorizadas por SUNAT. Antes de habilitarla, Nubefact
+  pide emitir un juego de documentos de prueba desde el sistema.
+- La migración `d1a7c3e58b46` **borra los comprobantes de FactPro** que quedaron
+  sin validar y reinicia las secuencias: sin eso, la primera emisión chocaría con
+  el índice único de serie y número. Las ventas no se tocan.
+- Nota de crédito queda modelada y con su constructor de payload
+  (`construir_payload_nota_credito`), pero el flujo propio se difiere; hoy la baja
+  se hace por comunicación de baja.
 
 ## Reportes y vista pública
 
@@ -437,11 +475,17 @@ pegar el token y probar los endpoints protegidos desde el navegador.
 
 El buscador de clientes busca **sólo en la base local**. Para **autocompletar el
 nombre desde el documento** (DNI → RENIEC, RUC → SUNAT) se usa la API de
-consultas de FactPro (`consultas.factpro.la`), que es un **producto aparte** con
-**su propio token** — distinto al de facturación, y que el de facturación NO
-sirve (da "Token incorrecto").
+**APIsPERU** (`dniruc.apisperu.com`), un servicio **independiente del
+facturador**: si el facturador se cae, el autocompletado del mostrador sigue en
+pie. Antes esto colgaba de la API de consultas de FactPro, con el efecto de que
+un problema del proveedor tumbaba las dos cosas a la vez.
 
-- Configurar `FACTPRO_CONSULTAS_TOKEN` tras activar el producto en FactPro.
+- Configurar `APISPERU_TOKEN` tras registrarse en apisperu.com. El token viaja
+  como parámetro de la query, que es como lo exige su API.
+- APIsPERU devuelve los apellidos **ya separados** del nombre de pila, así que no
+  hace falta partir la cadena del padrón como exigía FactPro. El nombre se arma
+  con el nombre de pila delante, para que los saludos de WhatsApp no usen el
+  apellido.
 - **Sin token**, el endpoint responde 503 con mensaje claro y el botón "Buscar"
   del formulario de cliente **no se muestra** (degradación limpia).
 - Endpoints: `GET /clientes/consulta-documento/disponible` (¿hay token?) y
@@ -491,6 +535,6 @@ para convivir con otros stacks en el mismo host o servidor.
 - [x] **Fase 3** — Fichas de mantenimiento + PDF con el diseño de la ficha impresa
 - [x] **Fase 4** — Inventario: SKU, categorías, kardex, alertas, importación Excel
 - [x] **Fase 5** — Ventas, cotizaciones, punto de venta con escaneo, caja y arqueo
-- [x] **Fase 6** — Facturación electrónica FactPro (boleta/factura, anulación, modo simulación)
+- [x] **Fase 6** — Facturación electrónica (boleta/factura, anulación, modo simulación); migrada de FactPro a Nubefact
 - [x] **Fase 7** — Reportes exportables (PDF/Excel) y vista pública del QR
 - [x] **Fase 8** — Pulido: auditoría, notificaciones, backups, PWA, Swagger completo

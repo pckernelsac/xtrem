@@ -21,7 +21,13 @@ from app.models.comprobante import (
 )
 from app.models.cliente import TipoDocumento
 from app.models.venta import EstadoVenta, TipoVenta, Venta
-from app.services import factpro_client
+from app.services import (
+    factpro_client,
+    nubefact_catalogos,
+    nubefact_client,
+    nubefact_facturacion,
+)
+from app.services.nubefact_catalogos import ERROR_YA_EXISTE
 from app.services.factpro_catalogos import (
     ESTADO_SUNAT_ACEPTADO,
     ESTADO_SUNAT_ANULADO,
@@ -63,14 +69,41 @@ def desglosar_igv(total: Decimal) -> tuple[Decimal, Decimal, Decimal]:
 
 
 def _siguiente_numero(db: Session, serie: str) -> int:
-    """Número correlativo para modo simulación.
+    """Número correlativo de la serie, desde una secuencia dedicada.
 
-    Con SUNAT real lo asigna FactPro; aquí sólo sirve para que la demo tenga
-    numeración coherente. Va por una secuencia dedicada a cada serie.
+    Con FactPro esto sólo servía para la simulación, porque el número lo
+    asignaba el proveedor. **Con Nubefact es la fuente de verdad**: el
+    correlativo lo manda el emisor y debe ser consecutivo desde 1 por tipo de
+    documento, sin huecos ni repeticiones.
+
+    Las secuencias de Postgres no retroceden con un ROLLBACK. Eso es
+    deliberado aquí: si dos cajeros emiten a la vez, cada uno recibe un número
+    distinto sin bloquearse. A cambio, un envío fallido deja su número
+    reservado, y por eso el reintento reutiliza el del comprobante en ERROR en
+    vez de pedir otro (ver `_numero_reservado`).
     """
     seq = f"comprobante_{serie.lower()}_seq"
     db.execute(text(f"CREATE SEQUENCE IF NOT EXISTS {seq}"))
     return int(db.scalar(text(f"SELECT nextval('{seq}')")))
+
+
+def _numero_reservado(db: Session, venta_id: uuid.UUID, serie: str) -> int | None:
+    """Número que ya se había reservado para esta venta en un intento fallido.
+
+    Reutilizarlo evita dejar huecos en la numeración, que SUNAT observa. Sólo
+    se consideran los intentos de la misma serie: cambiar de boleta a factura
+    (porque se corrigió el documento del cliente) exige número nuevo.
+    """
+    return db.scalar(
+        select(ComprobanteElectronico.numero).where(
+            ComprobanteElectronico.venta_id == venta_id,
+            ComprobanteElectronico.estado == EstadoComprobante.ERROR,
+            ComprobanteElectronico.serie == serie,
+            ComprobanteElectronico.numero > 0,
+        )
+        .order_by(ComprobanteElectronico.numero.desc())
+        .limit(1)
+    )
 
 
 def _tipo_para(venta: Venta) -> TipoComprobante:
@@ -82,9 +115,9 @@ def _tipo_para(venta: Venta) -> TipoComprobante:
 
 def _serie_para(tipo: TipoComprobante) -> str:
     return (
-        settings.FACTPRO_SERIE_FACTURA
+        settings.SERIE_FACTURA
         if tipo is TipoComprobante.FACTURA
-        else settings.FACTPRO_SERIE_BOLETA
+        else settings.SERIE_BOLETA
     )
 
 
@@ -227,31 +260,157 @@ def emitir_desde_venta(
             ),
         )
 
-    payload = _construir_payload(venta, tipo, serie)
-    numero_sim = _siguiente_numero(db, serie) if settings.factpro_simulado else 0
-    datos_cliente = payload["cliente"]
+    if settings.usa_nubefact:
+        return _emitir_nubefact(db, venta, tipo, serie, actor_id)
+    return _emitir_factpro(db, venta, tipo, serie, actor_id)
 
-    # Los importes se congelan aquí, no se leen de la venta al consultarlos: un
-    # comprobante es un documento tributario y su monto no puede cambiar
-    # después ni desaparecer si la venta se borra.
+
+def _nuevo_comprobante(
+    venta: Venta,
+    tipo: TipoComprobante,
+    serie: str,
+    numero: int,
+    cliente_tipo: str,
+    cliente_numero: str,
+    cliente_denominacion: str,
+    payload: dict,
+    actor_id: uuid.UUID | None,
+) -> ComprobanteElectronico:
+    """Comprobante local, con los importes ya congelados.
+
+    Los importes se guardan aquí y no se leen de la venta al consultarlos: un
+    comprobante es un documento tributario y su monto no puede cambiar después
+    ni desaparecer si la venta se borra.
+    """
     base, igv, total = desglosar_igv(venta.total)
-
-    comprobante = ComprobanteElectronico(
+    return ComprobanteElectronico(
         tipo=tipo,
         estado=EstadoComprobante.PENDIENTE,
         serie=serie,
-        numero=numero_sim,
+        numero=numero,
         venta_id=venta.id,
         fecha_emision=hoy_local(),
         moneda=settings.MONEDA_POR_DEFECTO,
         base_imponible=base,
         igv=igv,
         total=total,
-        cliente_tipo_documento=datos_cliente["cliente_tipo_documento"],
-        cliente_numero_documento=datos_cliente["cliente_numero_documento"],
-        cliente_denominacion=datos_cliente["cliente_denominacion"],
+        cliente_tipo_documento=cliente_tipo,
+        cliente_numero_documento=cliente_numero,
+        cliente_denominacion=cliente_denominacion,
         payload_enviado=payload,
         usuario_id=actor_id,
+    )
+
+
+def _emitir_nubefact(
+    db: Session,
+    venta: Venta,
+    tipo: TipoComprobante,
+    serie: str,
+    actor_id: uuid.UUID | None,
+) -> ComprobanteElectronico:
+    """Emisión por Nubefact: el correlativo lo lleva el ERP, no el proveedor."""
+    # Un intento anterior ya reservó número: se reutiliza para no dejar huecos
+    # en la numeración, que SUNAT observa.
+    numero = _numero_reservado(db, venta.id, serie) or _siguiente_numero(db, serie)
+
+    payload = nubefact_facturacion.construir_payload(venta, tipo, serie, numero)
+    comprobante = _nuevo_comprobante(
+        venta,
+        tipo,
+        serie,
+        numero,
+        payload["cliente_tipo_de_documento"],
+        payload["cliente_numero_de_documento"],
+        payload["cliente_denominacion"],
+        payload,
+        actor_id,
+    )
+
+    try:
+        respuesta = nubefact_client.emitir(payload)
+    except nubefact_client.NubefactError as exc:
+        # El código 23 significa que Nubefact YA tenía este documento: el envío
+        # anterior llegó y se perdió la respuesta. Emitir otro duplicaría el
+        # comprobante ante SUNAT, así que se recupera el que ya existe.
+        if exc.codigo == ERROR_YA_EXISTE:
+            return _recuperar_existente(db, comprobante, tipo, serie, numero)
+
+        # Se persiste el intento fallido: deja rastro de qué se envió y por qué
+        # falló. El índice único excluye los ERROR, así que varios intentos
+        # sobre la misma serie y número conviven sin chocar.
+        comprobante.estado = EstadoComprobante.ERROR
+        comprobante.mensaje_error = exc.mensaje
+        comprobante.respuesta = exc.respuesta
+        db.add(comprobante)
+        db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Nubefact rechazó el comprobante: {exc.mensaje}",
+        ) from exc
+
+    nubefact_facturacion.aplicar_respuesta(comprobante, respuesta)
+    db.add(comprobante)
+    db.commit()
+    db.refresh(comprobante)
+    return comprobante
+
+
+def _recuperar_existente(
+    db: Session,
+    comprobante: ComprobanteElectronico,
+    tipo: TipoComprobante,
+    serie: str,
+    numero: int,
+) -> ComprobanteElectronico:
+    """Rescata un comprobante que Nubefact ya tenía registrado.
+
+    Ocurre cuando el envío llegó pero la respuesta se perdió (corte de red,
+    timeout). Se consulta y se guarda con los datos reales en vez de emitir un
+    duplicado ante SUNAT.
+    """
+    try:
+        respuesta = nubefact_client.consultar(
+            nubefact_catalogos.TIPO_COMPROBANTE[tipo.value], serie, numero
+        )
+    except nubefact_client.NubefactError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=(
+                f"El comprobante {serie}-{numero} ya existe en Nubefact pero no se "
+                f"pudo recuperar: {exc.mensaje}"
+            ),
+        ) from exc
+
+    nubefact_facturacion.aplicar_respuesta(comprobante, respuesta)
+    db.add(comprobante)
+    db.commit()
+    db.refresh(comprobante)
+    return comprobante
+
+
+def _emitir_factpro(
+    db: Session,
+    venta: Venta,
+    tipo: TipoComprobante,
+    serie: str,
+    actor_id: uuid.UUID | None,
+) -> ComprobanteElectronico:
+    """Emisión por FactPro. Se conserva para poder volver atrás sin desplegar."""
+    payload = _construir_payload(venta, tipo, serie)
+    numero_sim = _siguiente_numero(db, serie) if settings.factpro_simulado else 0
+    datos_cliente = payload["cliente"]
+
+    comprobante = _nuevo_comprobante(
+        venta,
+        tipo,
+        serie,
+        numero_sim,
+        datos_cliente["cliente_tipo_documento"],
+        datos_cliente["cliente_numero_documento"],
+        datos_cliente["cliente_denominacion"],
+        payload,
+        actor_id,
     )
 
     try:
@@ -259,10 +418,6 @@ def emitir_desde_venta(
             payload, numero_sim, TIPO_COMPROBANTE_SUNAT[tipo.value]
         )
     except factpro_client.FactProError as exc:
-        # Se persiste el intento fallido: deja rastro de qué se envió y por qué
-        # falló, para reintentar o auditar sin perder el contexto.
-        # El índice único excluye los ERROR, así que varios intentos fallidos
-        # con número 0 conviven sin chocar.
         comprobante.estado = EstadoComprobante.ERROR
         comprobante.mensaje_error = exc.mensaje
         comprobante.respuesta = exc.respuesta
@@ -299,6 +454,45 @@ def anular_comprobante(
     if not motivo.strip():
         raise HTTPException(status_code=422, detail="La anulación requiere un motivo")
 
+    if settings.usa_nubefact:
+        try:
+            respuesta = nubefact_client.anular(
+                nubefact_catalogos.TIPO_COMPROBANTE[comprobante.tipo.value],
+                comprobante.serie,
+                comprobante.numero,
+                motivo,
+            )
+        except nubefact_client.NubefactError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=f"Nubefact no pudo anular el comprobante: {exc.mensaje}",
+            ) from exc
+
+        # SUNAT procesa las bajas en diferido: Nubefact devuelve un ticket y
+        # `aceptada_por_sunat: false` hasta que responde. Marcar ANULADO ya
+        # sería afirmar algo que SUNAT todavía no ha confirmado, así que el
+        # estado sólo cambia cuando viene aceptada; si no, queda para que
+        # `consultar_estado` lo refresque.
+        comprobante.motivo_anulacion = motivo
+        comprobante.respuesta = respuesta
+        if respuesta.get("_simulado"):
+            comprobante.es_simulado = True
+
+        if respuesta.get("aceptada_por_sunat"):
+            comprobante.estado = EstadoComprobante.ANULADO
+            comprobante.fecha_anulacion = datetime.now(UTC)
+            comprobante.descripcion_estado_sunat = str(
+                respuesta.get("sunat_description") or "ANULADO"
+            )[:300]
+        else:
+            comprobante.descripcion_estado_sunat = (
+                f"Baja en trámite · ticket {respuesta.get('sunat_ticket_numero') or '—'}"
+            )[:300]
+
+        db.commit()
+        db.refresh(comprobante)
+        return comprobante
+
     try:
         respuesta = factpro_client.anular(comprobante.serie, comprobante.numero, motivo)
     except factpro_client.FactProError as exc:
@@ -320,10 +514,43 @@ def anular_comprobante(
     return comprobante
 
 
+def _consultar_nubefact(
+    db: Session, comprobante: ComprobanteElectronico
+) -> ComprobanteElectronico:
+    """Refresca contra Nubefact, que responde el estado y si está anulado."""
+    tipo = nubefact_catalogos.TIPO_COMPROBANTE[comprobante.tipo.value]
+    try:
+        respuesta = nubefact_client.consultar(tipo, comprobante.serie, comprobante.numero)
+    except nubefact_client.NubefactError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"No se pudo consultar el estado: {exc.mensaje}",
+        ) from exc
+
+    anulado = bool(respuesta.get("anulado"))
+    estado_previo = comprobante.estado
+
+    nubefact_facturacion.aplicar_respuesta(comprobante, respuesta)
+
+    # `aplicar_respuesta` deduce el estado de la aceptación por SUNAT, que sigue
+    # siendo true en un comprobante dado de baja: la anulación manda.
+    if anulado or estado_previo is EstadoComprobante.ANULADO:
+        comprobante.estado = EstadoComprobante.ANULADO
+        if comprobante.fecha_anulacion is None:
+            comprobante.fecha_anulacion = datetime.now(UTC)
+
+    db.commit()
+    db.refresh(comprobante)
+    return comprobante
+
+
 def consultar_estado(
     db: Session, comprobante: ComprobanteElectronico
 ) -> ComprobanteElectronico:
     """Refresca el estado SUNAT: un REGISTRADO puede haber pasado a ACEPTADO."""
+    if settings.usa_nubefact:
+        return _consultar_nubefact(db, comprobante)
+
     try:
         respuesta = factpro_client.consultar(comprobante.serie, comprobante.numero)
     except factpro_client.FactProError as exc:

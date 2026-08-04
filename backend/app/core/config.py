@@ -48,7 +48,19 @@ class Settings(BaseSettings):
     # CORS
     CORS_ORIGINS: str = "http://localhost:5173"
 
-    # --- FactPro / facturación electrónica (Fase 6) ---
+    # --- Facturación electrónica ---
+    #: Proveedor activo: "nubefact" o "factpro". Se deja conmutable para poder
+    #: volver atrás sin desplegar código si el nuevo proveedor falla.
+    FACTURADOR: str = "nubefact"
+
+    # --- Nubefact ---
+    #: RUTA única del cliente, con su UUID. Las cuatro operaciones van al mismo
+    #: sitio por POST; lo que cambia es el campo `operacion` del cuerpo.
+    NUBEFACT_RUTA: str = ""
+    NUBEFACT_TOKEN: str = ""
+    NUBEFACT_TIMEOUT_SEGUNDOS: float = 30.0
+
+    # --- FactPro (proveedor anterior, se conserva para poder volver) ---
     FACTPRO_BASE_URL: str = "https://api.factpro.la/api/v3"
     FACTPRO_TOKEN: str = ""
     # Rutas tomadas de la doc viva (docs.factpro.la), que difieren del prompt.
@@ -58,33 +70,53 @@ class Settings(BaseSettings):
     FACTPRO_PATH_CONSULTA: str = "/consulta"
     FACTPRO_TIMEOUT_SEGUNDOS: float = 30.0
 
-    # Datos del emisor y series autorizadas por SUNAT (se configuran en FactPro).
+    # Datos del emisor y series autorizadas. Las series las da de alta el
+    # facturador, NO son libres: emitir con una que la cuenta no tenga
+    # habilitada se rechaza con "no puedes emitir comprobantes con esta serie".
+    # Las cuentas demo de Nubefact traen BBB1 y FFF1; en producción se usan las
+    # autorizadas por SUNAT (B001/F001). Nubefact exige 4 caracteres exactos y
+    # que empiecen por B (boletas y sus notas) o F (facturas y sus notas).
     EMISOR_RUC: str = "10431869662"
     EMISOR_RAZON_SOCIAL: str = "ZONA XTREMA BIKES & COMPONENTES"
-    FACTPRO_SERIE_FACTURA: str = "F001"
-    FACTPRO_SERIE_BOLETA: str = "B001"
-    FACTPRO_SERIE_NC_FACTURA: str = "FC01"
-    FACTPRO_SERIE_NC_BOLETA: str = "BC01"
+    SERIE_FACTURA: str = "F001"
+    SERIE_BOLETA: str = "B001"
+    SERIE_NC_FACTURA: str = "FC01"
+    SERIE_NC_BOLETA: str = "BC01"
     MONEDA_POR_DEFECTO: str = "PEN"
 
-    # Consulta de RENIEC/SUNAT por documento (producto aparte de FactPro,
-    # con su propio token; base y token distintos a los de facturación).
+    # Consulta de RENIEC/SUNAT por documento. Va por APIsPERU, que es un
+    # servicio independiente del facturador: si el facturador cae, el
+    # autocompletado del mostrador sigue en pie.
+    APISPERU_URL: str = "https://dniruc.apisperu.com/api/v1"
+    APISPERU_TOKEN: str = ""
+
+    #: Servicio anterior de consultas (FactPro). Sólo se usa si no hay token de
+    #: APIsPERU, para no romper un despliegue que aún tenga el viejo.
     FACTPRO_CONSULTAS_URL: str = "https://consultas.factpro.la/api/v1"
     FACTPRO_CONSULTAS_TOKEN: str = ""
 
     @property
+    def usa_nubefact(self) -> bool:
+        return self.FACTURADOR.strip().lower() == "nubefact"
+
+    @property
     def consulta_documento_disponible(self) -> bool:
         """Sin token de consultas, el autocompletado por DNI/RUC no opera."""
-        return bool(self.FACTPRO_CONSULTAS_TOKEN.strip())
+        return bool(self.APISPERU_TOKEN.strip() or self.FACTPRO_CONSULTAS_TOKEN.strip())
 
     @property
     def factpro_simulado(self) -> bool:
-        """Sin token no se llama a SUNAT: se opera en modo simulación.
+        """Sin credenciales no se llama a SUNAT: se opera en modo simulación.
 
         Permite construir y persistir comprobantes con la misma estructura que
-        los reales para desarrollar y demostrar el flujo completo. Poner el
-        token real conmuta a la emisión efectiva sin más cambios.
+        los reales para desarrollar y demostrar el flujo completo. Poner las
+        credenciales reales conmuta a la emisión efectiva sin más cambios.
+
+        El nombre se conserva porque lo consumen el endpoint de conteos y el
+        frontend; lo que decide es el proveedor activo.
         """
+        if self.usa_nubefact:
+            return not (self.NUBEFACT_RUTA.strip() and self.NUBEFACT_TOKEN.strip())
         return not self.FACTPRO_TOKEN.strip()
 
     @property

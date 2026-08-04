@@ -131,7 +131,9 @@ class ComprobanteElectronico(UUIDMixin, TimestampMixin, Base):
 
     # --- Datos que devuelve SUNAT/FactPro ---
     tipo_estado_sunat: Mapped[str | None] = mapped_column(String(4))
-    descripcion_estado_sunat: Mapped[str | None] = mapped_column(String(60))
+    #: 300 y no 60: Nubefact devuelve frases completas ("La Factura numero
+    #: FFF1-1, ha sido aceptada") y los rechazos de SUNAT son más largos aún.
+    descripcion_estado_sunat: Mapped[str | None] = mapped_column(String(300))
     hash_cpe: Mapped[str | None] = mapped_column(String(120))
     qr: Mapped[str | None] = mapped_column(Text)
 

@@ -26,6 +26,7 @@ import { fmtFechaHora } from "@/features/clientes/types"
 import { CobrarFacturarModal } from "@/features/fichas/CobrarFacturarModal"
 import { CompartirModal } from "@/features/fichas/CompartirModal"
 import { CompartirVentaModal } from "@/features/ventas/CompartirVentaModal"
+import { METODOS, type MetodoPago } from "@/features/ventas/types"
 import {
   ESTADOS,
   ESTADOS_FINALES,
@@ -62,10 +63,14 @@ export default function FichaDetailPage() {
   const [compartirOpen, setCompartirOpen] = useState(false)
   const [cobrarOpen, setCobrarOpen] = useState(false)
   const [compartirVentaOpen, setCompartirVentaOpen] = useState(false)
+  const [adelantoOpen, setAdelantoOpen] = useState(false)
 
   const [nuevoEstado, setNuevoEstado] = useState<EstadoFicha>("EN_REVISION")
   const [comentario, setComentario] = useState("")
   const [imprimiendo, setImprimiendo] = useState(false)
+  const [nuevoAdelanto, setNuevoAdelanto] = useState("")
+  const [adelantoMetodo, setAdelantoMetodo] = useState<MetodoPago>("EFECTIVO")
+  const [motivoAdelanto, setMotivoAdelanto] = useState("")
 
   const { data: f, isLoading } = useQuery({
     queryKey: ["fichas", id],
@@ -91,6 +96,34 @@ export default function FichaDetailPage() {
       setComentario("")
     },
   })
+
+  // Corregir el adelanto mueve caja: el backend compensa la diferencia en la
+  // sesión abierta, así que sólo se manda el importe final que debía quedar.
+  const ajustarAdelanto = useMutation({
+    mutationFn: async () => {
+      const monto = Number(nuevoAdelanto) || 0
+      await api.patch(`${API_PREFIX}/fichas/${id}/adelanto`, {
+        adelanto: monto,
+        adelanto_metodo: monto > 0 ? adelantoMetodo : null,
+        motivo: motivoAdelanto.trim() || null,
+      })
+    },
+    onSuccess: () => {
+      invalidar()
+      qc.invalidateQueries({ queryKey: ["caja"] })
+      setAdelantoOpen(false)
+      setMotivoAdelanto("")
+    },
+  })
+
+  const abrirAjusteAdelanto = () => {
+    if (!f) return
+    setNuevoAdelanto(Number(f.adelanto) ? String(Number(f.adelanto)) : "")
+    setAdelantoMetodo(f.adelanto_metodo ?? "EFECTIVO")
+    setMotivoAdelanto("")
+    ajustarAdelanto.reset()
+    setAdelantoOpen(true)
+  }
 
   const cancelar = useMutation({
     mutationFn: async () => {
@@ -185,6 +218,10 @@ export default function FichaDetailPage() {
   const puedeCobrar = cobrable && !f.facturacion && (canFacturar || canVender)
   const notaSinComprobante = Boolean(f.facturacion && !f.facturacion.comprobante_id)
   const puedeEmitirSobreNota = canFacturar && notaSinComprobante
+  // El adelanto se corrige hasta que exista la venta: después ya es un pago de
+  // esa venta y del comprobante, y sólo se arregla anulando o con nota de
+  // crédito. Se permite con la ficha entregada, que es cuando salta el error.
+  const puedeAjustarAdelanto = canEdit && !f.facturacion && f.estado !== "CANCELADA"
 
   return (
     <div>
@@ -426,7 +463,18 @@ export default function FichaDetailPage() {
             <dd className="tabular mt-0.5 text-base font-semibold">{soles(f.total)}</dd>
           </div>
           <div>
-            <dt className="text-xs text-muted-foreground">Adelanto · Saldo</dt>
+            <dt className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              Adelanto · Saldo
+              {puedeAjustarAdelanto && (
+                <button
+                  onClick={abrirAjusteAdelanto}
+                  className="rounded p-0.5 hover:bg-accent hover:text-foreground"
+                  title="Corregir el adelanto cobrado en recepción"
+                >
+                  <Pencil className="h-3 w-3" />
+                </button>
+              )}
+            </dt>
             <dd className="tabular mt-0.5 text-sm">
               {soles(f.adelanto)} · <span className="font-semibold">{soles(f.saldo)}</span>
             </dd>
@@ -644,6 +692,85 @@ export default function FichaDetailPage() {
           <Button disabled={cambiarEstado.isPending} onClick={() => cambiarEstado.mutate()}>
             {cambiarEstado.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
             Confirmar
+          </Button>
+        </div>
+      </Modal>
+
+      {/* ---------- Modal: corregir el adelanto ---------- */}
+      <Modal
+        open={adelantoOpen}
+        onClose={() => setAdelantoOpen(false)}
+        title="Corregir adelanto"
+        description={`Servicio N° ${f.numero} · cobrado en recepción ${soles(f.adelanto)}`}
+      >
+        <div className="flex gap-2">
+          <Field label="Adelanto correcto" required className="flex-1">
+            <Input
+              type="number"
+              min="0"
+              step="0.01"
+              max={Number(f.total)}
+              value={nuevoAdelanto}
+              onChange={(e) => setNuevoAdelanto(e.target.value)}
+              placeholder="0.00"
+            />
+          </Field>
+          <Field label="Método" className="w-40">
+            <Select
+              value={adelantoMetodo}
+              onChange={(e) => setAdelantoMetodo(e.target.value as MetodoPago)}
+              disabled={!(Number(nuevoAdelanto) > 0)}
+            >
+              {METODOS.map((m) => (
+                <option key={m.value} value={m.value}>
+                  {m.label}
+                </option>
+              ))}
+            </Select>
+          </Field>
+        </div>
+
+        <Field label="Motivo" className="mt-4" hint="Queda en el historial del servicio.">
+          <Input
+            value={motivoAdelanto}
+            onChange={(e) => setMotivoAdelanto(e.target.value)}
+            placeholder="Por qué se corrige (opcional)"
+          />
+        </Field>
+
+        <p className="mt-4 rounded-md bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
+          La diferencia se registra en la caja abierta: un ingreso si el adelanto sube y un
+          egreso si baja o se devuelve. Nuevo saldo por cobrar:{" "}
+          <span className="tabular font-semibold text-foreground">
+            {soles(Number(f.total) - (Number(nuevoAdelanto) || 0))}
+          </span>
+        </p>
+
+        <div className="mt-4">
+          <FormError
+            message={
+              ajustarAdelanto.isError
+                ? apiErrorMessage(ajustarAdelanto.error, "No se pudo corregir el adelanto")
+                : null
+            }
+          />
+        </div>
+
+        <div className="mt-4 flex justify-end gap-2">
+          <Button variant="secondary" onClick={() => setAdelantoOpen(false)}>
+            Cancelar
+          </Button>
+          <Button
+            disabled={
+              ajustarAdelanto.isPending ||
+              nuevoAdelanto.trim() === "" ||
+              Number(nuevoAdelanto) < 0 ||
+              Number(nuevoAdelanto) > Number(f.total)
+            }
+            onClick={() => ajustarAdelanto.mutate()}
+          >
+            {ajustarAdelanto.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
+            Guardar
           </Button>
         </div>
       </Modal>

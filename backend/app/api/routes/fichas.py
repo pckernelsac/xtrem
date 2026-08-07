@@ -1,5 +1,6 @@
 import uuid
 from datetime import UTC, datetime
+from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from fastapi.security import HTTPAuthorizationCredentials
@@ -11,7 +12,7 @@ from app.core.config import settings
 from app.core.security import decode_token
 from app.db.session import get_db
 from app.models.bicicleta import Bicicleta
-from app.models.caja import MetodoPago, TipoMovimientoCaja
+from app.models.caja import ETIQUETAS_METODO, MetodoPago, TipoMovimientoCaja
 from app.models.cliente import Cliente
 from app.models.comprobante import ComprobanteElectronico
 from app.models.ficha import (
@@ -26,6 +27,7 @@ from app.models.user import User
 from app.models.venta import Venta
 from app.schemas.comprobante import ComprobanteDetail
 from app.schemas.ficha import (
+    AjusteAdelantoIn,
     CambioEstadoIn,
     CompartirOut,
     ConteoEstados,
@@ -52,6 +54,8 @@ from app.services.ficha_pdf import render_ficha_pdf, render_ficha_ticket
 from app.services.whatsapp import enlace_whatsapp, mensaje_ficha, normalizar_telefono
 
 router = APIRouter(prefix="/fichas", tags=["fichas"])
+
+CERO = Decimal("0.00")
 
 
 def _siguiente_numero(db: Session) -> str:
@@ -439,6 +443,123 @@ def cambiar_estado(
 
     db.commit()
     db.refresh(ficha)
+    return ficha
+
+
+@router.patch("/{ficha_id}/adelanto", response_model=FichaDetail)
+def ajustar_adelanto(
+    ficha_id: uuid.UUID,
+    data: AjusteAdelantoIn,
+    db: Session = Depends(get_db),
+    actor: User = Depends(require_permission("fichas.editar")),
+) -> Ficha:
+    """Corrige el adelanto de un servicio que todavía no se cobró.
+
+    El adelanto se cobra al recibir y por eso no se toca desde la edición
+    normal de la ficha: mover ese importe mueve caja. Aquí sí se puede, porque
+    la corrección se compensa con su propio movimiento —ingreso si sube,
+    egreso si baja o se devuelve— en la sesión de caja abierta, que es donde
+    debe reflejarse el dinero que entra o sale hoy.
+
+    Se admite incluso con la ficha ENTREGADA, mientras no exista la venta: ese
+    es justo el momento en que el error salta, al ir a cobrar el saldo.
+    """
+    ficha = _get_ficha(db, ficha_id)
+
+    # Con la venta creada el adelanto ya es un pago de esa venta —y del
+    # comprobante emitido encima—: cambiarlo dejaría el documento diciendo un
+    # importe y la venta pagada con otro.
+    if _venta_de_ficha(db, ficha.id) is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "El servicio ya fue cobrado y el adelanto forma parte de esa venta. "
+                "Anula el comprobante o emite una nota de crédito para corregirlo."
+            ),
+        )
+    if ficha.estado is EstadoFicha.CANCELADA:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="La ficha está cancelada y ya no admite cambios",
+        )
+
+    anterior = ficha.adelanto or CERO
+    metodo_anterior = ficha.adelanto_metodo or MetodoPago.EFECTIVO
+    nuevo = data.adelanto
+    metodo_nuevo = data.adelanto_metodo or metodo_anterior
+
+    if nuevo > ficha.total:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=(
+                f"El adelanto (S/ {nuevo:.2f}) supera el total del servicio "
+                f"(S/ {ficha.total:.2f})"
+            ),
+        )
+
+    sin_cambios = nuevo == anterior and (nuevo == CERO or metodo_nuevo is metodo_anterior)
+    if sin_cambios:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="El adelanto ya tiene ese importe",
+        )
+
+    # Qué tiene que ver la caja: la diferencia cuando el método no cambia, y el
+    # reverso completo más el nuevo cobro cuando sí cambia (son dos medios de
+    # pago distintos y el arqueo los cuenta por separado).
+    concepto = f"Ajuste de adelanto servicio N° {ficha.numero}"
+    movimientos: list[tuple[TipoMovimientoCaja, MetodoPago, Decimal]] = []
+    if anterior > CERO and nuevo > CERO and metodo_nuevo is not metodo_anterior:
+        movimientos.append((TipoMovimientoCaja.EGRESO, metodo_anterior, anterior))
+        movimientos.append((TipoMovimientoCaja.INGRESO, metodo_nuevo, nuevo))
+    elif nuevo > anterior:
+        movimientos.append((TipoMovimientoCaja.INGRESO, metodo_nuevo, nuevo - anterior))
+    elif nuevo < anterior:
+        movimientos.append((TipoMovimientoCaja.EGRESO, metodo_anterior, anterior - nuevo))
+
+    # El efectivo sale o entra del cajón y exige caja abierta; los métodos
+    # digitales sólo se anotan si hay sesión, igual que al crear la ficha.
+    hay_efectivo = any(metodo is MetodoPago.EFECTIVO for _, metodo, _ in movimientos)
+    sesion = exigir_sesion_abierta(db) if hay_efectivo else sesion_abierta(db)
+    if sesion is not None:
+        for tipo, metodo, monto in movimientos:
+            registrar_movimiento_caja(
+                db,
+                sesion,
+                tipo,
+                metodo,
+                monto,
+                concepto=concepto,
+                usuario_id=actor.id,
+                referencia=ficha.numero,
+            )
+
+    ficha.adelanto = nuevo
+    ficha.adelanto_metodo = metodo_nuevo if nuevo > CERO else None
+
+    detalle = f"Adelanto corregido de S/ {anterior:.2f} a S/ {nuevo:.2f}"
+    if anterior > CERO and nuevo > CERO and metodo_nuevo is not metodo_anterior:
+        detalle += (
+            f" ({ETIQUETAS_METODO.get(metodo_anterior.value, metodo_anterior.value)}"
+            f" → {ETIQUETAS_METODO.get(metodo_nuevo.value, metodo_nuevo.value)})"
+        )
+    if data.motivo:
+        detalle += f" · {data.motivo}"
+
+    # El historial es la única traza visible del cambio en el mostrador; el
+    # estado no se mueve, sólo se anota el ajuste en la línea de tiempo.
+    ficha.historial_estados.append(
+        FichaEstadoLog(
+            estado_anterior=None,
+            estado_nuevo=ficha.estado,
+            usuario_id=actor.id,
+            comentario=detalle,
+        )
+    )
+
+    db.commit()
+    db.refresh(ficha)
+    ficha.facturacion = None  # type: ignore[attr-defined]
     return ficha
 
 

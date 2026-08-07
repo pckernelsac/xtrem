@@ -127,6 +127,19 @@ class CambioEstadoIn(BaseModel):
     comentario: str | None = Field(default=None, max_length=300)
 
 
+class AjusteAdelantoIn(BaseModel):
+    """Corrección del adelanto cobrado en recepción.
+
+    Es el importe final que queda en la ficha, no la diferencia: la caja se
+    ajusta sola con el movimiento que falte.
+    """
+
+    adelanto: Decimal = Field(ge=0, max_digits=10, decimal_places=2)
+    #: Método del adelanto corregido. Si no viene, se conserva el que tenía.
+    adelanto_metodo: MetodoPago | None = None
+    motivo: str | None = Field(default=None, max_length=200)
+
+
 class EstadoLogOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

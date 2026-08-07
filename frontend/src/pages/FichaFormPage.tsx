@@ -727,7 +727,10 @@ export default function FichaFormPage() {
                 </div>
               </Field>
             ) : (
-              <Field label="Adelanto cobrado al recibir">
+              <Field
+                label="Adelanto cobrado al recibir"
+                hint="Se corrige desde el detalle del servicio: el ajuste tiene que pasar por caja."
+              >
                 <Input value={soles(adelanto || 0)} disabled readOnly />
               </Field>
             )}

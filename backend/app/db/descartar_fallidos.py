@@ -3,7 +3,7 @@
 Un comprobante en `ERROR` es un envío que se rechazó **antes** de existir para
 SUNAT: no tiene CDR, no se declaró y su número no llegó a usarse. La tabla lo
 conserva a propósito, porque el reintento reutiliza el correlativo reservado y
-así la serie no queda con huecos (`facturacion.py:109-124`).
+así la serie no queda con huecos (`facturacion._numero_reservado`).
 
 Eso sirve cuando se reintenta enseguida. Cuando el rechazo se debió a algo ajeno
 al documento —un alta de SUNAT que aún no había surtido efecto, por ejemplo— lo

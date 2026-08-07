@@ -65,6 +65,10 @@ class ComprobanteOut(BaseModel):
     tiene_xml: bool
     tiene_cdr: bool
     es_simulado: bool
+    #: Emitido, pero SUNAT no llegó a recibirlo (estaba caído). Se reenvía solo
+    #: con el mismo número; la UI tiene que decirlo para que nadie lo reemita.
+    envio_pendiente: bool
+    intentos_envio: int
     mensaje_error: str | None
     motivo_anulacion: str | None
     created_at: datetime
@@ -99,6 +103,9 @@ class ConteoComprobantes(BaseModel):
     por_estado: dict[str, int]
     #: Advierte a la UI que estos comprobantes NO son válidos ante SUNAT.
     modo_simulacion: bool
+    #: Emitidos y en cola porque SUNAT no respondió. No se filtra por tipo: si
+    #: SUNAT está caído lo está para todos, y hay que verlo desde cualquier vista.
+    sin_enviar: int
 
 
 class LoteOut(BaseModel):

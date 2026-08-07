@@ -1,17 +1,21 @@
 import { useEffect, useState } from "react"
-import { useQuery } from "@tanstack/react-query"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Link } from "react-router-dom"
 import {
   AlertTriangle,
+  CloudOff,
   FileCode2,
   FileSpreadsheet,
   FileText,
+  Loader2,
   MessageCircle,
   Receipt,
   Search,
+  Send,
 } from "lucide-react"
 
 import { api, API_PREFIX } from "@/lib/api"
+import { usePermission } from "@/lib/auth"
 import { Badge } from "@/components/ui/Badge"
 import { Button } from "@/components/ui/Form"
 import { ARCHIVO_INFO, abrirArchivo, type ArchivoComprobante } from "@/features/facturacion/archivos"
@@ -25,8 +29,8 @@ import { SkeletonTable } from "@/components/ui/skeleton"
 import { fmtFecha, type Page } from "@/features/clientes/types"
 import {
   ESTADOS_COMPROBANTE,
-  ESTADO_COMP_INFO,
   TIPO_COMP_LABEL,
+  estadoComprobante,
   type Comprobante,
   type ConteoComprobantes,
   type DiaPendiente,
@@ -95,6 +99,8 @@ function ArchivoLink({
 type Vista = "documentos" | "declaracion"
 
 export default function DocumentosPage() {
+  const qc = useQueryClient()
+  const canEmitir = usePermission("facturacion.emitir")
   const [vista, setVista] = useState<Vista>("documentos")
   const [tab, setTab] = useState<Tab>("TODAS")
   const [search, setSearch] = useState("")
@@ -143,6 +149,19 @@ export default function DocumentosPage() {
   const sinDeclarar = (pendientes.data ?? []).reduce((n, d) => n + d.boletas, 0)
   const fueraDePlazo = (pendientes.data ?? []).some((d) => d.fuera_de_plazo)
 
+  // Vacía la cola sin esperar al ciclo de fondo. No emite nada: reenvía cada
+  // comprobante con el XML y el número con los que ya se emitió.
+  const reenviar = useMutation({
+    mutationFn: async () => {
+      await api.post(`${API_PREFIX}/facturacion/reenviar`)
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["facturacion"] })
+      qc.invalidateQueries({ queryKey: ["sistema"] })
+    },
+  })
+  const sinEnviar = conteos.data?.sin_enviar ?? 0
+
   const items = data?.items ?? []
   const total = data?.total ?? 0
 
@@ -171,6 +190,41 @@ export default function DocumentosPage() {
               estructura real pero <strong>no se envían a SUNAT ni tienen validez tributaria</strong>.
             </p>
           </div>
+        </div>
+      )}
+
+      {/* SUNAT se cayó mientras se emitía. Los comprobantes existen y son
+          válidos; lo único que falta es que lleguen, y llegan solos. El aviso
+          está para que nadie los reemita y duplique el correlativo. */}
+      {sinEnviar > 0 && (
+        <div className="mb-4 flex flex-wrap items-start justify-between gap-3 rounded-md border border-state-warning/40 bg-state-warning/10 px-4 py-3 text-sm text-state-warning">
+          <div className="flex items-start gap-2">
+            <CloudOff className="mt-0.5 h-4 w-4 shrink-0" />
+            <div>
+              <p className="font-medium">
+                {sinEnviar} comprobante(s) pendientes de enviar a SUNAT
+              </p>
+              <p className="text-xs">
+                Están emitidos con su número definitivo y el cliente ya tiene su copia; SUNAT no
+                respondió al enviarlos. Se reintenta cada pocos minutos hasta que los acepte.{" "}
+                <strong>No los vuelvas a emitir</strong>: se duplicaría el correlativo.
+              </p>
+            </div>
+          </div>
+          {canEmitir && (
+            <Button
+              onClick={() => reenviar.mutate()}
+              disabled={reenviar.isPending}
+              title="Intenta entregarlos ahora, sin esperar al reintento automático"
+            >
+              {reenviar.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Send className="h-4 w-4" />
+              )}
+              Reenviar ahora
+            </Button>
+          )}
         </div>
       )}
 
@@ -313,8 +367,8 @@ export default function DocumentosPage() {
                       )}
                     </td>
                     <td className="px-4 py-2.5">
-                      <Badge tone={ESTADO_COMP_INFO[d.estado].tone}>
-                        {d.descripcion_estado_sunat ?? ESTADO_COMP_INFO[d.estado].label}
+                      <Badge tone={estadoComprobante(d).tone}>
+                        {estadoComprobante(d).label}
                       </Badge>
                     </td>
                     <td className="px-4 py-2.5">

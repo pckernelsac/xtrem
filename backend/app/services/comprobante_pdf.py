@@ -74,7 +74,7 @@ def cadena_qr(comprobante: ComprobanteElectronico) -> str:
     emitió.
     """
     campos = [
-        _ruc_emisor(comprobante),
+        ruc_emisor(comprobante),
         TIPO_SUNAT.get(comprobante.tipo.value, "01"),
         comprobante.serie,
         str(comprobante.numero),
@@ -88,7 +88,7 @@ def cadena_qr(comprobante: ComprobanteElectronico) -> str:
     return "|".join(campos) + "|"
 
 
-def _ruc_emisor(comprobante: ComprobanteElectronico) -> str:
+def ruc_emisor(comprobante: ComprobanteElectronico) -> str:
     """RUC con el que se emitió, leído del XML firmado si está disponible.
 
     Cae a la configuración actual sólo si el comprobante no guarda el XML, que
@@ -124,7 +124,7 @@ def nombre_sunat(comprobante: ComprobanteElectronico) -> str:
     """
     return "-".join(
         [
-            _ruc_emisor(comprobante),
+            ruc_emisor(comprobante),
             TIPO_SUNAT.get(comprobante.tipo.value, "01"),
             comprobante.serie,
             f"{comprobante.numero:08d}",

@@ -151,6 +151,36 @@ def calcular(db: Session, usuario: User) -> list[dict]:
                 )
             )
 
+    # --- Facturación: comprobantes que SUNAT todavía no ha recibido ---
+    # Se reenvían solos cada pocos minutos, así que esto sólo debería verse
+    # mientras SUNAT está caído. Si persiste, deja de ser una caída pasajera:
+    # la factura tiene plazo de entrega y aquí ya hay que mirar la causa.
+    if "facturacion.ver" in permisos:
+        from app.services.facturacion import DIAS_PLAZO_ENVIO, dias_en_cola, pendientes_de_envio
+
+        en_cola = pendientes_de_envio(db)
+        if en_cola:
+            dias = dias_en_cola(db)
+            vencido = dias > DIAS_PLAZO_ENVIO
+            alertas.append(
+                _alerta(
+                    "comprobantes_sin_enviar",
+                    "danger" if vencido else "warning",
+                    "Comprobantes pendientes de enviar a SUNAT",
+                    (
+                        f"{len(en_cola)} comprobante(s) emitidos que SUNAT no ha recibido. "
+                        + (
+                            f"El más antiguo lleva {dias} días y ya pasó el plazo de "
+                            f"{DIAS_PLAZO_ENVIO}."
+                            if vencido
+                            else "Se reenvían automáticamente en cuanto responda."
+                        )
+                    ),
+                    "/documentos",
+                    len(en_cola),
+                )
+            )
+
     # --- Facturación: boletas emitidas pero todavía sin declarar ---
     # Emitir una boleta no la declara: SUNAT sólo la da por informada cuando
     # llega en el resumen diario, y hay plazo. Sin este aviso, el olvido no se

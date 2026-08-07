@@ -4,12 +4,14 @@ import { Link, useNavigate, useParams } from "react-router-dom"
 import {
   ArrowLeft,
   Ban,
+  CloudOff,
   FileCode2,
   FileText,
   Loader2,
   MessageCircle,
   Receipt,
   RefreshCw,
+  Send,
 } from "lucide-react"
 
 import { api, API_PREFIX, apiErrorMessage } from "@/lib/api"
@@ -27,8 +29,8 @@ import {
 } from "@/features/facturacion/archivos"
 import { CompartirComprobanteModal } from "@/features/facturacion/CompartirComprobanteModal"
 import {
-  ESTADO_COMP_INFO,
   TIPO_COMP_LABEL,
+  estadoComprobante,
   type ComprobanteDetail,
 } from "@/features/facturacion/types"
 
@@ -97,7 +99,9 @@ export default function DocumentoDetailPage() {
     )
   }
 
-  const anulable = d.estado === "ACEPTADO" || d.estado === "REGISTRADO"
+  // Un comprobante en cola no se puede anular todavía: la baja llegaría a SUNAT
+  // antes que el propio documento.
+  const anulable = (d.estado === "ACEPTADO" || d.estado === "REGISTRADO") && !d.envio_pendiente
 
   return (
     <div>
@@ -120,17 +124,26 @@ export default function DocumentoDetailPage() {
                 Enviar por WhatsApp
               </Button>
             )}
+            {/* El mismo botón: para un comprobante en cola, «consultar» sólo
+                puede querer decir «intenta entregarlo ahora», y eso hace. */}
             <Button
-              variant="secondary"
+              variant={d.envio_pendiente ? "primary" : "secondary"}
               onClick={() => consultar.mutate()}
               disabled={consultar.isPending}
+              title={
+                d.envio_pendiente
+                  ? "Vuelve a mandar este mismo comprobante a SUNAT"
+                  : "Refresca el estado guardado"
+              }
             >
               {consultar.isPending ? (
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : d.envio_pendiente ? (
+                <Send className="h-3.5 w-3.5" />
               ) : (
                 <RefreshCw className="h-3.5 w-3.5" />
               )}
-              Consultar SUNAT
+              {d.envio_pendiente ? "Reenviar a SUNAT" : "Consultar SUNAT"}
             </Button>
             {canAnular && anulable && (
               <Button variant="danger" onClick={() => setAnularOpen(true)}>
@@ -149,11 +162,31 @@ export default function DocumentoDetailPage() {
         </div>
       )}
 
+      {/* Lo importante de este aviso es la última frase: quien atiende tiene que
+          saber que NO debe volver a emitir, o la serie acaba con dos documentos
+          para el mismo número en cuanto SUNAT vuelva. */}
+      {d.envio_pendiente && (
+        <div className="mb-4 flex items-start gap-2 rounded-md border border-state-warning/40 bg-state-warning/10 px-4 py-3 text-sm text-state-warning">
+          <CloudOff className="mt-0.5 h-4 w-4 shrink-0" />
+          <div>
+            <p className="font-medium">Registrado: pendiente de envío a SUNAT</p>
+            <p className="text-xs">
+              El comprobante está emitido y firmado con su número definitivo, y el cliente ya
+              puede llevarse el PDF. SUNAT no respondió al enviarlo, así que se reenviará solo
+              cada pocos minutos hasta que lo acepte
+              {d.intentos_envio > 1 && ` (${d.intentos_envio} intentos)`}.{" "}
+              <strong>No lo vuelvas a emitir</strong>: se duplicaría el correlativo.
+            </p>
+            {/* Lo que contestó SUNAT, en crudo: es lo único que distingue una
+                caída de un problema de red nuestro. */}
+            {d.mensaje_error && <p className="mt-1 text-xs opacity-70">{d.mensaje_error}</p>}
+          </div>
+        </div>
+      )}
+
       <div className="rounded-lg border border-border bg-card p-5">
         <div className="flex flex-wrap items-center gap-3">
-          <Badge tone={ESTADO_COMP_INFO[d.estado].tone}>
-            {d.descripcion_estado_sunat ?? ESTADO_COMP_INFO[d.estado].label}
-          </Badge>
+          <Badge tone={estadoComprobante(d).tone}>{estadoComprobante(d).label}</Badge>
           <span className="tabular text-sm text-muted-foreground">
             Emitido {fmtFechaHora(d.created_at)}
           </span>

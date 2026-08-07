@@ -7,7 +7,7 @@ export type EstadoComprobante =
   | "ANULADO"
   | "ERROR"
 
-type Tone = "success" | "warning" | "danger" | "neutral" | "info"
+export type Tone = "success" | "warning" | "danger" | "neutral" | "info"
 
 // Colores del patrón de referencia de FactPro: verde=aceptado, gris=registrado,
 // rojo=anulado/rechazado, ámbar=pendiente.
@@ -55,9 +55,34 @@ export type Comprobante = {
   tiene_xml: boolean
   tiene_cdr: boolean
   es_simulado: boolean
+  /**
+   * Emitido, pero SUNAT no llegó a recibirlo porque estaba caído. Se reenvía
+   * solo con el mismo número: no hay que volver a emitirlo, o la serie
+   * acabaría con dos documentos para el mismo correlativo.
+   */
+  envio_pendiente: boolean
+  intentos_envio: number
   mensaje_error: string | null
   motivo_anulacion: string | null
   created_at: string
+}
+
+/**
+ * Etiqueta y color con los que se pinta el estado de un comprobante.
+ *
+ * La descripción de SUNAT manda cuando existe: dice bastante más que el estado
+ * interno. El único matiz es la cola de reenvío, que va en ámbar aunque el
+ * estado sea `REGISTRADO` —el gris de «registrado» lo daría por resuelto, y lo
+ * que hay es un documento que todavía no ha llegado a SUNAT.
+ */
+export function estadoComprobante(
+  c: Pick<Comprobante, "estado" | "descripcion_estado_sunat" | "envio_pendiente">,
+): { label: string; tone: Tone } {
+  const base = ESTADO_COMP_INFO[c.estado]
+  return {
+    label: c.descripcion_estado_sunat ?? base.label,
+    tone: c.envio_pendiente ? "warning" : base.tone,
+  }
 }
 
 export type ComprobanteDetail = Comprobante & {
@@ -72,6 +97,8 @@ export type ConteoComprobantes = {
   todas: number
   por_estado: Record<EstadoComprobante, number>
   modo_simulacion: boolean
+  /** Emitidos y en cola porque SUNAT no respondió. */
+  sin_enviar: number
 }
 
 export type CompartirComprobante = {

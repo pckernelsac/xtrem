@@ -37,6 +37,7 @@ from app.services.facturacion import (
     consultar_estado,
     emitir_desde_venta,
     en_simulacion,
+    reenviar_pendientes,
 )
 from app.services.facturacion_export import exportar_comprobantes_excel
 from app.services.whatsapp import enlace_whatsapp, mensaje_comprobante, normalizar_telefono
@@ -66,10 +67,20 @@ def conteos(
     for estado, cantidad in filas:
         por_estado[estado.value] = cantidad
 
+    sin_enviar = (
+        db.scalar(
+            select(func.count(ComprobanteElectronico.id)).where(
+                ComprobanteElectronico.envio_pendiente.is_(True)
+            )
+        )
+        or 0
+    )
+
     return ConteoComprobantes(
         todas=sum(por_estado.values()),
         por_estado=por_estado,
         modo_simulacion=en_simulacion(db),
+        sin_enviar=sin_enviar,
     )
 
 
@@ -250,9 +261,28 @@ def consultar(
     db: Session = Depends(get_db),
     _: User = Depends(require_permission("facturacion.ver")),
 ) -> ComprobanteElectronico:
-    """Refresca el estado del comprobante contra SUNAT."""
+    """Refresca el estado del comprobante contra SUNAT.
+
+    Si el comprobante se quedó en la cola porque SUNAT no respondió al emitirlo,
+    esto lo reenvía —el mismo XML, el mismo número— sin esperar al ciclo de
+    fondo. Es lo único que puede significar «consultar» en ese estado.
+    """
     comprobante = _get(db, comprobante_id)
     return consultar_estado(db, comprobante)
+
+
+@router.post("/reenviar", response_model=list[ComprobanteOut])
+def reenviar_cola(
+    db: Session = Depends(get_db),
+    _: User = Depends(require_permission("facturacion.emitir")),
+) -> list[ComprobanteElectronico]:
+    """Entrega a SUNAT todos los comprobantes que se quedaron sin enviar.
+
+    No emite nada: cada uno viaja con el XML y el correlativo con los que se
+    emitió. El ciclo de fondo hace esto mismo cada pocos minutos; el botón está
+    para no esperarlo cuando se ve que SUNAT ya volvió.
+    """
+    return reenviar_pendientes(db)
 
 
 # --------------------------------------------------------------------------

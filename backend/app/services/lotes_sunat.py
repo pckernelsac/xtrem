@@ -63,11 +63,14 @@ TIPO_DOC_RECEPTOR = {
 def boletas_sin_informar(db: Session, dia: date | None = None) -> list[ComprobanteElectronico]:
     """Boletas emitidas que todavía no han entrado en ningún resumen.
 
-    Se excluyen las que fallaron: sólo se declara lo que SUNAT aceptó.
+    Se excluyen las que fallaron y las que siguen en la cola de reenvío: sólo se
+    declara lo que SUNAT ya tiene. Meter en el resumen una boleta que el
+    servicio aún no ha recibido es declarar algo que podría acabar rechazado.
     """
     stmt = select(ComprobanteElectronico).where(
         ComprobanteElectronico.tipo == TipoComprobante.BOLETA,
         ComprobanteElectronico.lote_id.is_(None),
+        ComprobanteElectronico.envio_pendiente.is_(False),
         ComprobanteElectronico.estado.in_(
             [EstadoComprobante.ACEPTADO, EstadoComprobante.REGISTRADO]
         ),
@@ -96,6 +99,7 @@ def dias_pendientes(db: Session) -> list[dict]:
         .where(
             ComprobanteElectronico.tipo == TipoComprobante.BOLETA,
             ComprobanteElectronico.lote_id.is_(None),
+            ComprobanteElectronico.envio_pendiente.is_(False),
             ComprobanteElectronico.estado.in_(
                 [EstadoComprobante.ACEPTADO, EstadoComprobante.REGISTRADO]
             ),
@@ -381,6 +385,7 @@ def resumen_de_ayer_pendiente(db: Session) -> bool:
             select(func.count(ComprobanteElectronico.id)).where(
                 ComprobanteElectronico.tipo == TipoComprobante.BOLETA,
                 ComprobanteElectronico.lote_id.is_(None),
+                ComprobanteElectronico.envio_pendiente.is_(False),
                 ComprobanteElectronico.fecha_emision <= ayer,
                 ComprobanteElectronico.estado.in_(
                     [EstadoComprobante.ACEPTADO, EstadoComprobante.REGISTRADO]

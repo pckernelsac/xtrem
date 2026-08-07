@@ -5,12 +5,15 @@ contenedor aparte: son dos tareas y el sistema corre en una sola réplica. Si
 algún día se escalara a varias, esto habría que sacarlo fuera o cada réplica
 haría el trabajo por su cuenta.
 
-Dos cosas, y sólo una toca a SUNAT por iniciativa propia:
+Tres cosas, y sólo dos tocan a SUNAT por iniciativa propia:
 
 1. **Recoger los CDR pendientes.** Es sólo consultar, no tiene efectos, y sin
    ella los resúmenes se quedarían en «en proceso» para siempre porque los
    tickets no se resuelven solos.
-2. **Declarar el día anterior**, si está activado. Va **apagado por defecto**:
+2. **Reenviar lo que SUNAT no recibió** mientras estuvo caído. Tampoco es
+   iniciativa propia en realidad: son documentos que alguien ya mandó emitir y
+   que se quedaron a medio camino. Cuanto antes lleguen, mejor: hay plazo.
+3. **Declarar el día anterior**, si está activado. Va **apagado por defecto**:
    mandar documentos a SUNAT sin que nadie lo pida debe ser una decisión
    explícita de quien administra.
 """
@@ -22,12 +25,14 @@ from datetime import timedelta
 
 from app.core.fechas import ahora_local, hoy_local
 from app.db.session import SessionLocal
-from app.services import configuracion_sunat, lotes_sunat
+from app.services import configuracion_sunat, facturacion, lotes_sunat
 
 log = logging.getLogger("programador")
 
-#: Cada cuánto se miran los tickets pendientes. SUNAT tarda minutos, no horas.
-INTERVALO_CDR = timedelta(minutes=20)
+#: Cada cuánto da una vuelta el ciclo. Marca el retraso máximo con el que se
+#: entrega un comprobante que pilló a SUNAT caído, así que va corto: las caídas
+#: duran minutos y no tiene sentido esperar a la hora siguiente.
+INTERVALO = timedelta(minutes=5)
 
 #: Hora local a partir de la cual se declara el día anterior. Se elige por la
 #: mañana: la jornada ya cerró y queda margen de sobra dentro del plazo.
@@ -44,6 +49,29 @@ async def _recoger_cdr() -> None:
             log.info("CDR recogidos: %s", ", ".join(l.identificador for l in cerrados))
     except Exception:  # noqa: BLE001 - una tarea de fondo nunca debe tumbar el proceso
         log.exception("Fallo al recoger los CDR pendientes")
+    finally:
+        db.close()
+
+
+async def _reenviar_pendientes() -> None:
+    """Entrega los comprobantes que se quedaron sin llegar a SUNAT.
+
+    Cada uno va con su XML y su correlativo originales, así que esto no emite
+    nada nuevo: termina de entregar lo que ya se emitió.
+    """
+    db = SessionLocal()
+    try:
+        procesados = facturacion.reenviar_pendientes(db)
+        entregados = [c for c in procesados if not c.envio_pendiente]
+        if entregados:
+            log.info(
+                "Reenviados a SUNAT: %s",
+                ", ".join(f"{c.numero_completo} ({c.estado.value})" for c in entregados),
+            )
+        if len(procesados) > len(entregados):
+            log.warning("SUNAT sigue sin responder; quedan comprobantes en cola")
+    except Exception:  # noqa: BLE001
+        log.exception("Fallo al reenviar los comprobantes pendientes")
     finally:
         db.close()
 
@@ -74,6 +102,9 @@ async def _bucle() -> None:
 
     while True:
         try:
+            # Primero la cola: un comprobante sin entregar corre contra un plazo
+            # y además no puede entrar en ningún resumen hasta que SUNAT lo tenga.
+            await _reenviar_pendientes()
             await _recoger_cdr()
 
             ahora = ahora_local()
@@ -88,14 +119,14 @@ async def _bucle() -> None:
         except Exception:  # noqa: BLE001
             log.exception("Fallo en el ciclo del programador")
 
-        await asyncio.sleep(INTERVALO_CDR.total_seconds())
+        await asyncio.sleep(INTERVALO.total_seconds())
 
 
 def iniciar() -> asyncio.Task:
     """Arranca el ciclo y devuelve la tarea, para poder pararla al apagar."""
     log.info(
-        "Programador activo: CDR cada %s min, declaración automática a las %s h",
-        int(INTERVALO_CDR.total_seconds() // 60),
+        "Programador activo: reenvíos y CDR cada %s min, declaración automática a las %s h",
+        int(INTERVALO.total_seconds() // 60),
         HORA_DECLARACION,
     )
     return asyncio.create_task(_bucle())

@@ -1,8 +1,8 @@
 """Emisión de comprobantes electrónicos ante SUNAT, sin intermediarios.
 
 El XML se genera y se firma aquí con el certificado de la empresa y se manda
-directo a SUNAT. Ya no hay PSE de por medio, con dos consecuencias que marcan el
-diseño de este módulo:
+directo a SUNAT. Ya no hay PSE de por medio, con tres consecuencias que marcan
+el diseño de este módulo:
 
 1. **El correlativo lo lleva el ERP.** Va por una secuencia de Postgres por
    serie, y el reintento reutiliza el número reservado para no dejar huecos.
@@ -10,6 +10,12 @@ diseño de este módulo:
    la representación impresa se genera aquí. No dependemos de que nadie aloje
    nada: es justo lo que se perdió cuando el proveedor anterior dejó de
    responder.
+3. **Que SUNAT no conteste no es un rechazo del documento.** Sólo se ve el día
+   que SUNAT se cae, y es el caso que más daño hacía: el comprobante ya está
+   emitido y firmado, así que queda `REGISTRADO` con el envío pendiente y se
+   reintenta tal cual —mismo XML, mismo correlativo— hasta que haya respuesta.
+   Antes se marcaba `ERROR`, quien atendía volvía a emitir, y la serie acababa
+   con dos documentos para el mismo número.
 
 Sin certificado configurado se opera en **modo simulación**: se construye y
 persiste todo igual, pero no se llama a SUNAT y el comprobante queda marcado
@@ -19,11 +25,9 @@ como simulado.
 import uuid
 from datetime import UTC, datetime
 from decimal import ROUND_HALF_UP, Decimal
-from functools import lru_cache
-from pathlib import Path
 
 from fastapi import HTTPException, status
-from sqlalchemy import select, text
+from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 from sunat_cpe import (
     Certificado,
@@ -31,7 +35,7 @@ from sunat_cpe import (
     ErrorDeFirma,
     ErrorSunat,
     Respuesta,
-    emitir,
+    enviar,
     generar_xml,
 )
 
@@ -58,6 +62,49 @@ TOPE_BOLETA_SIN_DOCUMENTO = Decimal("700.00")
 
 #: IGV general. El ERP sólo maneja operaciones gravadas.
 IGV_TASA = Decimal("0.18")
+
+#: Plazo de SUNAT para entregar una factura desde su emisión. Se usa sólo para
+#: avisar: un comprobante que lleva más de esto en la cola ya no es una caída
+#: pasajera y alguien tiene que mirarlo.
+DIAS_PLAZO_ENVIO = 3
+
+#: Los dos faults con los que SUNAT dice, literalmente, «el sistema no puede
+#: responder su solicitud». Son los únicos códigos que se reintentan.
+#:
+#: La lista es blanca y corta a propósito. El resto de la familia `01xx` **no**
+#: es indisponibilidad: hay credenciales (0102, 0111) y hay errores de formato
+#: del propio envío (ZIP corrupto, nombre de archivo que no cuadra, XML fuera
+#: del estándar). Reintentar cualquiera de ésos sería repetir lo mismo para
+#: siempre, y además atascaría la cola detrás del documento imposible.
+CODIGOS_SIN_SERVICIO = {
+    "0100",  # El sistema no puede responder su solicitud (error no controlado)
+    "0109",  # El sistema no puede responder su solicitud (error en la BD)
+}
+
+#: Mensaje del 401 de la librería. Es un fallo de credenciales, no una caída, y
+#: llega sin código porque SUNAT lo devuelve como HTTP y no como SOAP Fault.
+_MENSAJE_401 = "SUNAT rechazó las credenciales"
+
+
+def sunat_no_disponible(exc: ErrorSunat) -> bool:
+    """¿El envío se quedó sin respuesta, en vez de ser rechazado?
+
+    Distinguirlo es lo único que separa «vuelve a intentarlo con este mismo
+    número» de «este documento no vale, hay que rehacerlo»:
+
+    * **Sin código** es transporte, y es el caso habitual de una caída: no se
+      pudo contactar, contestó algo que no era XML —la página de mantenimiento—,
+      un HTTP 5xx, o no devolvió el CDR. SUNAT nunca llegó a evaluar el
+      documento. La única excepción es el 401, que tampoco trae código pero es
+      de credenciales.
+    * **Con código** SUNAT sí contestó, y salvo los dos faults de «sistema no
+      disponible» lo que contestó es un veredicto sobre el envío. Insistir con
+      el mismo contenido daría siempre el mismo resultado.
+    """
+    codigo = (exc.codigo or "").strip()
+    if not codigo:
+        return _MENSAJE_401 not in exc.mensaje
+    return codigo in CODIGOS_SIN_SERVICIO
 
 
 def desglosar_igv(total: Decimal) -> tuple[Decimal, Decimal, Decimal]:
@@ -184,6 +231,41 @@ def _aplicar(
     comprobante.estado = (
         EstadoComprobante.ACEPTADO if respuesta.aceptado else EstadoComprobante.RECHAZADO
     )
+    # Hubo respuesta: aceptado o rechazado, el documento ya no está en la cola.
+    comprobante.envio_pendiente = False
+
+
+def _encolar(comprobante: ComprobanteElectronico, exc: ErrorSunat) -> None:
+    """Deja el comprobante emitido pero pendiente de entregar.
+
+    El documento existe: tiene número, está firmado y el cliente se lleva su
+    copia. Lo único que falta es que SUNAT lo reciba, y eso se reintenta con
+    **este mismo XML y este mismo correlativo**. Emitir otro sería duplicar el
+    número el día que SUNAT vuelva y acepte los dos.
+    """
+    comprobante.estado = EstadoComprobante.REGISTRADO
+    comprobante.envio_pendiente = True
+    comprobante.tipo_estado_sunat = (exc.codigo or "")[:4] or None
+    comprobante.descripcion_estado_sunat = "Registrado: pendiente de envío a SUNAT"
+    comprobante.mensaje_error = (
+        f"SUNAT no está disponible; el comprobante se reenviará automáticamente. {exc.mensaje}"
+    )[:1000]
+
+
+def _fallar(comprobante: ComprobanteElectronico, exc: ErrorSunat) -> None:
+    """El documento fue evaluado y no vale: queda en ERROR con su número.
+
+    Se conserva la fila con el correlativo reservado para que el reintento lo
+    reutilice y la serie no quede con un hueco, que SUNAT observa.
+    """
+    comprobante.estado = EstadoComprobante.ERROR
+    comprobante.envio_pendiente = False
+    comprobante.mensaje_error = exc.mensaje[:1000]
+    comprobante.tipo_estado_sunat = (exc.codigo or "")[:4] or None
+    # Se limpia porque puede venir de la cola, y ahí decía "pendiente de envío":
+    # dejarlo haría que la etiqueta siguiera prometiendo un reenvío que ya no
+    # va a ocurrir.
+    comprobante.descripcion_estado_sunat = None
 
 
 def emitir_desde_venta(
@@ -263,16 +345,43 @@ def emitir_desde_venta(
         db.refresh(comprobante)
         return comprobante
 
+    # Firmar y enviar van por separado —y no con `emitir()`, que hace las dos—
+    # porque el XML firmado hay que conservarlo aunque el envío no salga: es lo
+    # que se reintenta después, byte a byte, si SUNAT no estaba disponible.
     try:
-        respuesta, xml, digest = emitir(
-            documento, certificado_de_la_empresa(db), credenciales_sol(db)
-        )
+        xml, digest = generar_xml(documento, certificado_de_la_empresa(db))
+    except ErrorDeFirma as exc:
+        # El certificado no sirve. El número ya se consumió de la secuencia, así
+        # que se guarda el intento para que el reintento lo reutilice en vez de
+        # dejar un hueco en la serie.
+        _fallar(comprobante, ErrorSunat(f"No se pudo firmar el comprobante: {exc}"))
+        db.add(comprobante)
+        db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"No se pudo firmar el comprobante: {exc}",
+        ) from exc
+
+    comprobante.hash_cpe = digest
+    comprobante.xml_firmado = xml.decode("utf-8", errors="replace")
+    comprobante.intentos_envio = 1
+    comprobante.ultimo_intento_envio = datetime.now(UTC)
+
+    try:
+        respuesta = enviar(credenciales_sol(db), documento.nombre_archivo, xml)
     except ErrorSunat as exc:
-        # Se persiste el intento fallido con su número reservado, para que el
-        # reintento lo reutilice y no deje un hueco en la serie.
-        comprobante.estado = EstadoComprobante.ERROR
-        comprobante.mensaje_error = exc.mensaje[:1000]
-        comprobante.tipo_estado_sunat = (exc.codigo or "")[:4] or None
+        if sunat_no_disponible(exc):
+            # SUNAT no llegó a ver el documento. Queda emitido y en cola: el
+            # cliente se lleva su comprobante y el reenvío lo entrega luego con
+            # el mismo número. Devolver un error aquí es lo que llevaba a
+            # reemitir y duplicar el correlativo.
+            _encolar(comprobante, exc)
+            db.add(comprobante)
+            db.commit()
+            db.refresh(comprobante)
+            return comprobante
+
+        _fallar(comprobante, exc)
         db.add(comprobante)
         db.commit()
         raise HTTPException(
@@ -303,6 +412,120 @@ def _xml_simulado(db: Session, documento) -> tuple[bytes, str]:
         return etree.tostring(construir(documento), xml_declaration=True, encoding="utf-8"), ""
 
 
+# --------------------------------------------------------------------------
+# Cola de reenvío
+#
+# Lo que SUNAT no recibió cuando estaba caído. No se vuelve a construir nada:
+# se manda el mismo XML firmado que se guardó al emitir, con su mismo número.
+# --------------------------------------------------------------------------
+def _nombre_envio(comprobante: ComprobanteElectronico) -> str:
+    """Nombre del archivo tal como viajó la primera vez.
+
+    SUNAT contrasta el nombre del ZIP con lo que dice el XML, así que el
+    reenvío tiene que repetirlo exactamente: `RUC-TIPO-SERIE-CORRELATIVO`, con
+    el correlativo **sin rellenar de ceros**, que es como lo arma la librería.
+    El de `nombre_sunat`, el de las descargas, lleva ocho dígitos y aquí no
+    vale.
+    """
+    # Import local: `comprobante_pdf` arrastra WeasyPrint y este módulo lo
+    # importa también el programador, que no genera PDF ninguno.
+    from app.services.comprobante_pdf import TIPO_SUNAT, ruc_emisor
+
+    tipo = TIPO_SUNAT.get(comprobante.tipo.value, "01")
+    return f"{ruc_emisor(comprobante)}-{tipo}-{comprobante.serie}-{comprobante.numero}"
+
+
+def pendientes_de_envio(db: Session) -> list[ComprobanteElectronico]:
+    """Comprobantes emitidos que SUNAT todavía no ha recibido, los viejos antes."""
+    return list(
+        db.scalars(
+            select(ComprobanteElectronico)
+            .where(ComprobanteElectronico.envio_pendiente.is_(True))
+            .order_by(
+                ComprobanteElectronico.fecha_emision,
+                ComprobanteElectronico.serie,
+                ComprobanteElectronico.numero,
+            )
+        )
+        .unique()
+        .all()
+    )
+
+
+def reenviar(db: Session, comprobante: ComprobanteElectronico) -> ComprobanteElectronico:
+    """Entrega a SUNAT un comprobante que se quedó en la cola.
+
+    Reenviar el mismo documento es seguro: si SUNAT llegó a registrarlo en el
+    intento anterior y lo que se perdió fue la respuesta, devuelve el CDR que ya
+    tenía en vez de un duplicado. Por eso el reintento reutiliza el XML y no
+    genera otro.
+    """
+    if not comprobante.envio_pendiente:
+        return comprobante
+    if not comprobante.xml_firmado:
+        # No debería ocurrir: la cola sólo recibe comprobantes ya firmados. Si
+        # pasa, sale de ella en vez de quedarse dando vueltas para siempre y
+        # atascando a los que van detrás.
+        _fallar(
+            comprobante,
+            ErrorSunat("El comprobante no guarda el XML firmado y no se puede reenviar"),
+        )
+        db.commit()
+        db.refresh(comprobante)
+        return comprobante
+
+    comprobante.intentos_envio += 1
+    comprobante.ultimo_intento_envio = datetime.now(UTC)
+    xml = comprobante.xml_firmado.encode("utf-8")
+
+    try:
+        respuesta = enviar(credenciales_sol(db), _nombre_envio(comprobante), xml)
+    except ErrorSunat as exc:
+        if sunat_no_disponible(exc):
+            # Sigue sin haber servicio: se queda en la cola tal cual.
+            _encolar(comprobante, exc)
+            db.commit()
+            db.refresh(comprobante)
+            return comprobante
+
+        # Ahora sí hubo veredicto y es un rechazo: sale de la cola y su número
+        # queda reservado para la corrección, igual que en la emisión.
+        _fallar(comprobante, exc)
+        db.commit()
+        db.refresh(comprobante)
+        return comprobante
+
+    _aplicar(comprobante, respuesta, xml, comprobante.hash_cpe or "", False)
+    db.commit()
+    db.refresh(comprobante)
+    return comprobante
+
+
+def reenviar_pendientes(db: Session) -> list[ComprobanteElectronico]:
+    """Vacía la cola, del más antiguo al más nuevo.
+
+    **Se corta en cuanto SUNAT vuelve a no responder.** Si el servicio está
+    caído lo está para todos, y seguir la lista sólo sirve para encadenar
+    esperas de un minuto por comprobante hasta bloquear el ciclo entero.
+    """
+    procesados: list[ComprobanteElectronico] = []
+    for comprobante in pendientes_de_envio(db):
+        procesados.append(reenviar(db, comprobante))
+        if comprobante.envio_pendiente:
+            break
+    return procesados
+
+
+def dias_en_cola(db: Session) -> int:
+    """Antigüedad del comprobante más viejo sin entregar. 0 si no hay ninguno."""
+    fecha = db.scalar(
+        select(func.min(ComprobanteElectronico.fecha_emision)).where(
+            ComprobanteElectronico.envio_pendiente.is_(True)
+        )
+    )
+    return (hoy_local() - fecha).days if fecha else 0
+
+
 def anular_comprobante(
     db: Session, comprobante: ComprobanteElectronico, motivo: str, actor_id: uuid.UUID | None
 ) -> ComprobanteElectronico:
@@ -315,6 +538,17 @@ def anular_comprobante(
     """
     if comprobante.estado is EstadoComprobante.ANULADO:
         raise HTTPException(status_code=409, detail="El comprobante ya está anulado")
+    if comprobante.envio_pendiente:
+        # No se puede dar de baja lo que SUNAT todavía no tiene: la baja
+        # llegaría antes que el documento y SUNAT la rechazaría. Hay que
+        # esperar al reenvío, que es cuestión de minutos en cuanto vuelva.
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "El comprobante aún no ha llegado a SUNAT: se está reenviando. "
+                "Anúlalo en cuanto quede aceptado."
+            ),
+        )
     if comprobante.estado not in (EstadoComprobante.ACEPTADO, EstadoComprobante.REGISTRADO):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -339,7 +573,11 @@ def consultar_estado(
 
     Emitiendo directo, el CDR llega en la misma respuesta del envío, así que no
     hay nada que volver a preguntar: el estado que hay guardado ya es el final.
-    Se conserva el endpoint porque la interfaz lo ofrece y porque los lotes sí
-    se resuelven en diferido.
+
+    La excepción es un comprobante que se quedó en la cola porque SUNAT no
+    respondió. Ahí «consultar» sólo puede significar una cosa —intentar
+    entregarlo ahora— y eso es lo que hace, sin esperar al ciclo de fondo.
     """
+    if comprobante.envio_pendiente:
+        return reenviar(db, comprobante)
     return comprobante

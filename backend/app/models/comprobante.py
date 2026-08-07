@@ -37,11 +37,11 @@ class EstadoComprobante(str, enum.Enum):
     """
 
     PENDIENTE = "PENDIENTE"     # creado localmente, aún no enviado
-    REGISTRADO = "REGISTRADO"   # aceptado por FactPro, en cola hacia SUNAT
+    REGISTRADO = "REGISTRADO"   # emitido y en cola hacia SUNAT (ver envio_pendiente)
     ACEPTADO = "ACEPTADO"       # SUNAT lo aceptó (con CDR)
     RECHAZADO = "RECHAZADO"     # SUNAT lo rechazó
     ANULADO = "ANULADO"         # comunicado de baja aceptado
-    ERROR = "ERROR"             # falló el envío (red, validación de FactPro)
+    ERROR = "ERROR"             # el documento se rechazó antes de existir para SUNAT
 
 
 ETIQUETAS_ESTADO_COMPROBANTE: dict[str, str] = {
@@ -74,6 +74,13 @@ class ComprobanteElectronico(UUIDMixin, TimestampMixin, Base):
             "numero",
             unique=True,
             postgresql_where=text("estado <> 'ERROR'"),
+        ),
+        # La cola de reenvío se recorre cada pocos minutos y casi siempre está
+        # vacía: un índice parcial la resuelve sin mirar la tabla entera.
+        Index(
+            "ix_comprobantes_envio_pendiente",
+            "envio_pendiente",
+            postgresql_where=text("envio_pendiente"),
         ),
     )
 
@@ -167,6 +174,19 @@ class ComprobanteElectronico(UUIDMixin, TimestampMixin, Base):
     #: inmediata: las facturas van en un lote (RA) y las boletas se anulan
     #: informándolas en el resumen diario con estado 3.
     baja_pendiente: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+
+    #: Emitido y firmado, pero SUNAT no llegó a recibirlo: estaba caído, no
+    #: respondió o devolvió un error de servicio. **No es un fallo del
+    #: documento**, así que el comprobante queda `REGISTRADO` y se reenvía tal
+    #: cual —mismo XML, mismo correlativo— hasta que SUNAT conteste. Sin esto,
+    #: una caída de SUNAT dejaba el comprobante en `ERROR` y quien atiende
+    #: volvía a emitir, duplicando el número contra la serie.
+    envio_pendiente: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+
+    #: Cuántas veces se ha intentado entregarlo, contando la emisión. Que suba
+    #: sin parar es la señal de que la caída ya no es un rato.
+    intentos_envio: Mapped[int] = mapped_column(default=0, nullable=False)
+    ultimo_intento_envio: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     #: Lote en el que se informó a SUNAT. Las boletas **deben** ir en un
     #: resumen diario; mientras esto sea nulo, la boleta está emitida pero no

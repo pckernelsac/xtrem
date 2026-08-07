@@ -142,12 +142,16 @@ class Ficha(UUIDMixin, TimestampMixin, Base):
     cliente_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("clientes.id", ondelete="RESTRICT"), nullable=False
     )
-    #: Opcional: un servicio puede ser sólo mano de obra, sin bicicleta asociada.
-    bicicleta_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("bicicletas.id", ondelete="RESTRICT")
-    )
     cliente: Mapped["Cliente"] = relationship(lazy="joined")  # noqa: F821
-    bicicleta: Mapped["Bicicleta | None"] = relationship(lazy="joined")  # noqa: F821
+
+    #: Un servicio admite varias bicicletas —un cliente deja dos a mantenimiento
+    #: y se atienden juntas— y también ninguna, cuando es sólo mano de obra.
+    bicicletas_asoc: Mapped[list["FichaBicicleta"]] = relationship(
+        back_populates="ficha",
+        cascade="all, delete-orphan",
+        order_by="FichaBicicleta.orden",
+        lazy="selectin",
+    )
 
     estado: Mapped[EstadoFicha] = mapped_column(
         Enum(EstadoFicha, name="estado_ficha"), default=EstadoFicha.RECIBIDA, nullable=False
@@ -233,6 +237,15 @@ class Ficha(UUIDMixin, TimestampMixin, Base):
     )
 
     @property
+    def bicicletas(self) -> list["Bicicleta"]:  # noqa: F821
+        """Las bicicletas del servicio, en el orden en que se recibieron.
+
+        Atajo sobre la tabla de enlace: quien lee la ficha —plantillas, PDF,
+        consulta pública— quiere las bicicletas, no las filas que las unen.
+        """
+        return [a.bicicleta for a in self.bicicletas_asoc]
+
+    @property
     def total_repuestos(self) -> Decimal:
         return sum((r.subtotal for r in self.repuestos), Decimal("0.00"))
 
@@ -249,6 +262,37 @@ class Ficha(UUIDMixin, TimestampMixin, Base):
     @property
     def archivada(self) -> bool:
         return self.archivada_at is not None
+
+
+class FichaBicicleta(UUIDMixin, Base):
+    """Enlace entre un servicio y cada bicicleta que entró con él.
+
+    Es tabla propia y no una columna en la ficha porque un cliente puede dejar
+    dos o tres bicicletas de una sola vez: van en el mismo servicio, con el
+    mismo presupuesto, pero cada una tiene que quedar identificada en la ficha
+    impresa y en el historial de su propia bicicleta.
+    """
+
+    __tablename__ = "ficha_bicicletas"
+    __table_args__ = (
+        # Una bicicleta no se repite dentro del mismo servicio: sería la misma
+        # máquina contada dos veces en la ficha impresa.
+        Index("ux_ficha_bicicletas", "ficha_id", "bicicleta_id", unique=True),
+    )
+
+    ficha_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("fichas.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    ficha: Mapped[Ficha] = relationship(back_populates="bicicletas_asoc")
+
+    #: RESTRICT: una bicicleta con servicios a cuestas no se borra sin romper
+    #: la trazabilidad de las fichas que la atendieron.
+    bicicleta_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("bicicletas.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    bicicleta: Mapped["Bicicleta"] = relationship(lazy="joined")  # noqa: F821
+
+    orden: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 
 
 class FichaRepuesto(UUIDMixin, Base):

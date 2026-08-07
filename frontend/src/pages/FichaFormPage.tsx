@@ -14,6 +14,7 @@ import {
 } from "lucide-react"
 
 import { api, API_PREFIX, apiErrorMessage } from "@/lib/api"
+import { cn } from "@/lib/utils"
 import { Button, Field, FormError, Input, Select, Textarea } from "@/components/ui/Form"
 import { PageHeader } from "@/components/ui/PageHeader"
 import { SkeletonCard } from "@/components/ui/skeleton"
@@ -96,7 +97,7 @@ export default function FichaFormPage() {
   const [clienteId, setClienteId] = useState("")
   const [clienteSel, setClienteSel] = useState<ClienteSel | null>(null)
   const [clienteModalOpen, setClienteModalOpen] = useState(false)
-  const [bicicletaId, setBicicletaId] = useState("")
+  const [bicicletaIds, setBicicletaIds] = useState<string[]>([])
   const [biciModalOpen, setBiciModalOpen] = useState(false)
   const [canal, setCanal] = useState("")
   const [servicios, setServicios] = useState<Set<ServicioGuardado>>(new Set())
@@ -120,8 +121,8 @@ export default function FichaFormPage() {
   const elegirCliente = (c: ClienteSel | null) => {
     setClienteSel(c)
     setClienteId(c?.id ?? "")
-    // La bici depende del dueño: cambiar de cliente la invalida.
-    setBicicletaId("")
+    // Las bicis dependen del dueño: cambiar de cliente las invalida.
+    setBicicletaIds([])
   }
 
   // Sólo las bicicletas del cliente elegido: el backend rechaza una ficha
@@ -137,12 +138,14 @@ export default function FichaFormPage() {
     enabled: Boolean(clienteId),
   })
 
+  const bicis = bicisQ.data?.items ?? []
+
   useEffect(() => {
     const f = fichaQ.data
     if (!f) return
     setClienteId(f.cliente.id)
     setClienteSel(f.cliente)
-    setBicicletaId(f.bicicleta?.id ?? "")
+    setBicicletaIds(f.bicicletas.map((b) => b.id))
     setCanal(f.canal_referencia ?? "")
     setServicios(new Set(f.servicios))
     setServicioOtro(f.servicio_otro ?? "")
@@ -153,6 +156,7 @@ export default function FichaFormPage() {
     setGarantia(f.garantia_dias?.toString() ?? "")
     setCostoServicio(Number(f.costo_servicio) ? String(Number(f.costo_servicio)) : "")
     setAdelanto(Number(f.adelanto) ? String(Number(f.adelanto)) : "")
+    setAdelantoMetodo(f.adelanto_metodo ?? "EFECTIVO")
     setFilas(
       f.repuestos.length
         ? f.repuestos.map((r) => ({
@@ -185,10 +189,18 @@ export default function FichaFormPage() {
   const manoObra = Number(costoServicio) || 0
   const total = totalRepuestos + manoObra
   const saldo = total - (Number(adelanto) || 0)
+  // Un adelanto por encima del total dejaría un saldo negativo, imposible de
+  // facturar: el backend lo rechaza, así que se avisa antes de mandarlo.
+  const adelantoExcedido = (Number(adelanto) || 0) > total
 
   const retirados = [...servicios].filter(
     (s): s is ServicioRetirado => s in ETIQUETAS_RETIRADAS,
   )
+
+  // Se conserva el orden en que se fueron marcando: así salen en la ficha
+  // impresa, que es el orden en que el cliente las dejó en el mostrador.
+  const toggleBicicleta = (id: string) =>
+    setBicicletaIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))
 
   const toggleServicio = (code: ServicioGuardado) => {
     setServicios((prev) => {
@@ -286,22 +298,33 @@ export default function FichaFormPage() {
           })),
       }
 
+      // El adelanto viaja igual en los dos casos: al crear entra a caja y al
+      // editar el backend compensa sólo la diferencia, si es que cambió.
+      const cobro = {
+        adelanto: Number(adelanto) || 0,
+        adelanto_metodo: Number(adelanto) > 0 ? adelantoMetodo : null,
+      }
+
       if (editando) {
-        await api.patch(`${API_PREFIX}/fichas/${id}`, payload)
+        await api.patch(`${API_PREFIX}/fichas/${id}`, {
+          ...payload,
+          ...cobro,
+          bicicleta_ids: bicicletaIds,
+        })
         return id!
       }
       const { data } = await api.post<FichaDetail>(`${API_PREFIX}/fichas`, {
         ...payload,
+        ...cobro,
         cliente_id: clienteId,
-        bicicleta_id: bicicletaId || null,
-        adelanto: Number(adelanto) || 0,
-        adelanto_metodo: Number(adelanto) > 0 ? adelantoMetodo : null,
+        bicicleta_ids: bicicletaIds,
       })
       return data.id
     },
     onSuccess: (fichaId) => {
       qc.invalidateQueries({ queryKey: ["fichas"] })
       qc.invalidateQueries({ queryKey: ["bicicletas"] })
+      qc.invalidateQueries({ queryKey: ["caja"] })
       navigate(`/fichas/${fichaId}`, { replace: true })
     },
   })
@@ -394,32 +417,51 @@ export default function FichaFormPage() {
               )}
             </Field>
 
+            {/* Varias: un cliente puede dejar dos o tres máquinas de una vez y
+                el taller las atiende en el mismo servicio. Ninguna marcada es
+                válido: hay trabajos que son sólo mano de obra. */}
             <Field
-              label="Bicicleta (opcional)"
+              label="Bicicletas del servicio"
               hint={
-                clienteId && bicisQ.data?.items.length === 0
-                  ? "Este cliente no tiene bicicletas registradas. Usa “Registrar nueva”."
-                  : "Déjalo en blanco si el servicio no involucra una bicicleta."
+                !clienteId
+                  ? "Elige primero el cliente."
+                  : bicis.length === 0
+                    ? "Este cliente no tiene bicicletas registradas. Usa “Registrar nueva”."
+                    : "Marca todas las que entran con este servicio. Sin marcar, es sólo mano de obra."
               }
             >
-              <div className="flex gap-2">
-                <Select
-                  value={bicicletaId}
-                  disabled={editando || !clienteId}
-                  onChange={(e) => setBicicletaId(e.target.value)}
-                  className="flex-1"
-                >
-                  <option value="">
-                    {clienteId ? "Sin bicicleta / no aplica" : "Elige primero el cliente"}
-                  </option>
-                  {(bicisQ.data?.items ?? []).map((b) => (
-                    <option key={b.id} value={b.id}>
-                      {b.descripcion}
-                      {b.numero_serie ? ` · ${b.numero_serie}` : ""}
-                    </option>
-                  ))}
-                </Select>
-                {!editando && (
+              <div className="rounded-md border border-border">
+                {bicis.length > 0 && (
+                  <div className="max-h-44 overflow-y-auto p-1">
+                    {bicis.map((b) => (
+                      <label
+                        key={b.id}
+                        className="flex cursor-pointer items-center gap-2.5 rounded-md px-2 py-1.5 text-sm hover:bg-accent"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={bicicletaIds.includes(b.id)}
+                          onChange={() => toggleBicicleta(b.id)}
+                          className="h-3.5 w-3.5 accent-[var(--primary)]"
+                        />
+                        <span className="min-w-0 flex-1 truncate">
+                          {b.descripcion}
+                          {b.numero_serie && (
+                            <span className="tabular ml-1.5 text-xs text-muted-foreground">
+                              {b.numero_serie}
+                            </span>
+                          )}
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                )}
+                <div className="flex items-center justify-between gap-2 border-t border-border px-2 py-1.5 first:border-t-0">
+                  <span className="text-xs text-muted-foreground">
+                    {bicicletaIds.length === 0
+                      ? "Ninguna marcada"
+                      : `${bicicletaIds.length} marcada${bicicletaIds.length > 1 ? "s" : ""}`}
+                  </span>
                   <Button
                     type="button"
                     variant="secondary"
@@ -434,15 +476,15 @@ export default function FichaFormPage() {
                     <Plus className="h-3.5 w-3.5" />
                     Registrar nueva
                   </Button>
-                )}
+                </div>
               </div>
             </Field>
           </div>
 
           {editando && (
             <p className="mt-3 text-xs text-muted-foreground">
-              El cliente y la bicicleta no se cambian después de crear la ficha: el N° de ficha ya
-              quedó asociado a ellos.
+              El cliente no se cambia después de crear la ficha: el N° de ficha ya quedó asociado
+              a él. Las bicicletas sí, mientras el servicio siga abierto.
             </p>
           )}
 
@@ -700,40 +742,38 @@ export default function FichaFormPage() {
               />
             </Field>
 
-            {!editando ? (
-              <Field label="Adelanto cobrado al recibir" hint="Entra a caja al crear el servicio.">
-                <div className="flex gap-2">
-                  <Input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={adelanto}
-                    onChange={(e) => setAdelanto(e.target.value)}
-                    placeholder="0.00"
-                    className="flex-1"
-                  />
-                  <Select
-                    value={adelantoMetodo}
-                    onChange={(e) => setAdelantoMetodo(e.target.value as MetodoPago)}
-                    disabled={!(Number(adelanto) > 0)}
-                    className="w-36"
-                  >
-                    {METODOS.map((m) => (
-                      <option key={m.value} value={m.value}>
-                        {m.label}
-                      </option>
-                    ))}
-                  </Select>
-                </div>
-              </Field>
-            ) : (
-              <Field
-                label="Adelanto cobrado al recibir"
-                hint="Se corrige desde el detalle del servicio: el ajuste tiene que pasar por caja."
-              >
-                <Input value={soles(adelanto || 0)} disabled readOnly />
-              </Field>
-            )}
+            <Field
+              label="Adelanto cobrado al recibir"
+              hint={
+                editando
+                  ? "Al corregirlo, la diferencia entra o sale de la caja abierta."
+                  : "Entra a caja al crear el servicio."
+              }
+            >
+              <div className="flex gap-2">
+                <Input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={adelanto}
+                  onChange={(e) => setAdelanto(e.target.value)}
+                  placeholder="0.00"
+                  className="flex-1"
+                />
+                <Select
+                  value={adelantoMetodo}
+                  onChange={(e) => setAdelantoMetodo(e.target.value as MetodoPago)}
+                  disabled={!(Number(adelanto) > 0)}
+                  className="w-36"
+                >
+                  {METODOS.map((m) => (
+                    <option key={m.value} value={m.value}>
+                      {m.label}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+            </Field>
           </div>
 
           <div className="mt-4 flex flex-wrap justify-end gap-x-8 gap-y-2 border-t border-border pt-4 text-sm">
@@ -744,10 +784,27 @@ export default function FichaFormPage() {
             {Number(adelanto) > 0 && (
               <div>
                 <span className="text-muted-foreground">Saldo restante</span>{" "}
-                <span className="tabular text-lg font-semibold">{soles(saldo)}</span>
+                <span
+                  className={cn(
+                    "tabular text-lg font-semibold",
+                    adelantoExcedido && "text-state-danger",
+                  )}
+                >
+                  {soles(saldo)}
+                </span>
               </div>
             )}
           </div>
+
+          {adelantoExcedido && (
+            <div className="mt-3 flex items-start gap-2 rounded-md border border-state-danger/30 bg-state-danger/10 px-3 py-2 text-xs text-state-danger">
+              <AlertTriangle className="mt-px h-3.5 w-3.5 shrink-0" />
+              <span>
+                El adelanto supera el total del servicio: el saldo quedaría en negativo y no
+                habría nada que cobrar.
+              </span>
+            </div>
+          )}
         </Seccion>
 
         <Seccion titulo="Trabajo realizado y observaciones">
@@ -803,7 +860,12 @@ export default function FichaFormPage() {
           </Button>
           <Button
             type="submit"
-            disabled={guardar.isPending || (!editando && !clienteId) || excedidas.length > 0}
+            disabled={
+              guardar.isPending ||
+              (!editando && !clienteId) ||
+              excedidas.length > 0 ||
+              adelantoExcedido
+            }
           >
             {guardar.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
             {editando ? "Guardar cambios" : "Crear servicio"}
@@ -816,7 +878,7 @@ export default function FichaFormPage() {
         open={biciModalOpen}
         onClose={() => setBiciModalOpen(false)}
         clienteId={clienteId}
-        onCreated={(b) => setBicicletaId(b.id)}
+        onCreated={(b) => toggleBicicleta(b.id)}
       />
 
       {/* Alta de cliente sin salir de la ficha: al crearlo queda seleccionado. */}

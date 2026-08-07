@@ -96,6 +96,15 @@
   .fila > * { flex: 1; min-width: 0; }
   .fila:last-child { margin-bottom: 0; }
 
+  /* ---------- Varias bicicletas en un mismo servicio ----------
+     El punteado separa una máquina de la siguiente sin abrir otro recuadro:
+     la sección ya está enmarcada y anidar bordes la haría ilegible. */
+  .separador-bici { border-top: .8pt dashed #999; margin: 2.4mm 0 2mm 0; }
+  .orden-bici {
+    font-weight: bold; font-size: 6.6pt; letter-spacing: .3pt;
+    color: #555; margin-bottom: 1.2mm;
+  }
+
   .cols { display: flex; gap: 2.6mm; }
   .cols > * { flex: 1; min-width: 0; }
 
@@ -226,21 +235,29 @@
     </div>
   </div>
 
-  <!-- ===================== BICICLETA ===================== -->
-  {% if f.bicicleta %}
+  <!-- ===================== BICICLETAS ===================== -->
+  {# Un servicio puede traer varias: cada una con su recuadro, numeradas para
+     que el cliente reconozca la suya al recogerlas. #}
+  {% if f.bicicletas %}
   <div class="seccion">
     <div class="tab">
       <span class="ico">{{ ico.icono("bici") }}</span>
-      <span class="txt">DATOS DE LA BICICLETA</span>
+      <span class="txt">{{ "DATOS DE LAS BICICLETAS" if f.bicicletas | length > 1 else "DATOS DE LA BICICLETA" }}</span>
+    </div>
+    {% for b in f.bicicletas %}
+    {% if not loop.first %}<div class="separador-bici"></div>{% endif %}
+    {% if f.bicicletas | length > 1 %}
+    <div class="orden-bici">BICICLETA {{ loop.index }} DE {{ f.bicicletas | length }}</div>
+    {% endif %}
+    <div class="fila">
+      <div class="campo"><span class="k">MARCA:</span><span class="v">{{ b.marca }}</span></div>
+      <div class="campo"><span class="k">MODELO:</span><span class="v">{{ b.modelo or "" }}</span></div>
     </div>
     <div class="fila">
-      <div class="campo"><span class="k">MARCA:</span><span class="v">{{ f.bicicleta.marca }}</span></div>
-      <div class="campo"><span class="k">MODELO:</span><span class="v">{{ f.bicicleta.modelo or "" }}</span></div>
+      <div class="campo"><span class="k">COLOR:</span><span class="v">{{ b.color or "" }}</span></div>
+      <div class="campo"><span class="k">N° DE SERIE:</span><span class="v">{{ b.numero_serie or "" }}</span></div>
     </div>
-    <div class="fila">
-      <div class="campo"><span class="k">COLOR:</span><span class="v">{{ f.bicicleta.color or "" }}</span></div>
-      <div class="campo"><span class="k">N° DE SERIE:</span><span class="v">{{ f.bicicleta.numero_serie or "" }}</span></div>
-    </div>
+    {% endfor %}
   </div>
   {% endif %}
 

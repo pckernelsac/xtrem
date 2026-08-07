@@ -84,16 +84,20 @@ def mensaje_ficha(ficha: Ficha, url_pdf: str) -> str:
     """
     nombre_corto = nombre_de_pila(ficha.cliente.nombre)
     saludo = f"¡Hola, {nombre_corto}!" if nombre_corto else "¡Hola!"
+    # Un servicio puede haber recibido más de una bicicleta: hablarle en
+    # singular a quien dejó dos suena a que sólo se atendió una.
+    varias = len(ficha.bicicletas) > 1
 
     return "\n".join(
         [
             f"{saludo} 👋 En ZonaXtrema nos encanta acompañarte y "
-            "queremos agradecerte por confiar en nosotros el cuidado de tu "
-            "engreída. 🚲✨",
+            "queremos agradecerte por confiar en nosotros el cuidado de "
+            + ("tus engreídas. 🚲✨" if varias else "tu engreída. 🚲✨"),
             "",
-            "Te compartimos la ficha técnica completa de tu bicicleta. Recuerda "
-            "que puedes hacer el seguimiento de tu servicio o pedido en el "
-            "siguiente enlace:",
+            "Te compartimos la ficha técnica completa de "
+            + ("tus bicicletas. " if varias else "tu bicicleta. ")
+            + "Recuerda que puedes hacer el seguimiento de tu servicio o pedido "
+            "en el siguiente enlace:",
             f"👉 {url_pdf}",
             "",
             "También te invitamos a visitar nuestra tienda virtual:",

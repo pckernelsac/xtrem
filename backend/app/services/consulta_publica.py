@@ -81,14 +81,17 @@ def datos_consulta(db: Session, ficha: Ficha) -> dict:
         "estado_label": ETIQUETAS_ESTADO[ficha.estado.value],
         "fecha_recepcion": ficha.fecha_recepcion.isoformat(),
         "fecha_entrega": ficha.fecha_entrega.isoformat() if ficha.fecha_entrega else None,
-        "bicicleta": {
-            "marca": ficha.bicicleta.marca,
-            "modelo": ficha.bicicleta.modelo,
-            "color": ficha.bicicleta.color,
-            "tipo": ficha.bicicleta.tipo.value,
-        }
-        if ficha.bicicleta
-        else None,
+        # Varias: un mismo servicio puede haber recibido dos o tres bicicletas
+        # del mismo cliente. Vacío en los servicios de sólo mano de obra.
+        "bicicletas": [
+            {
+                "marca": b.marca,
+                "modelo": b.modelo,
+                "color": b.color,
+                "tipo": b.tipo.value,
+            }
+            for b in ficha.bicicletas
+        ],
         "cliente_nombre": ficha.cliente.nombre,
         "servicios": servicios,
         "diagnostico": ficha.diagnostico_inicial,

@@ -104,14 +104,16 @@
     {% endif %}
   </div>
 
-  {% if f.bicicleta %}
+  {% if bicis %}
   <div class="bloque">
-    <div class="titulo">Bicicleta</div>
-    <div class="neg">{{ bici_desc }}</div>
-    <div class="fila"><span class="k">Tipo</span><span class="v">{{ f.bicicleta.tipo.value }}</span></div>
-    {% if f.bicicleta.numero_serie %}
-    <div class="fila"><span class="k">N° serie</span><span class="v">{{ f.bicicleta.numero_serie }}</span></div>
+    <div class="titulo">{{ "Bicicletas" if bicis | length > 1 else "Bicicleta" }}</div>
+    {% for b in bicis %}
+    <div class="neg">{{ "%d. "|format(loop.index) if bicis | length > 1 }}{{ b.desc }}</div>
+    <div class="fila"><span class="k">Tipo</span><span class="v">{{ b.tipo }}</span></div>
+    {% if b.numero_serie %}
+    <div class="fila"><span class="k">N° serie</span><span class="v">{{ b.numero_serie }}</span></div>
     {% endif %}
+    {% endfor %}
   </div>
   {% endif %}
 

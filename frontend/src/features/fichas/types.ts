@@ -122,14 +122,16 @@ export type Ficha = {
     telefono: string | null
     email: string | null
   }
-  bicicleta: {
+  /** Varias: un cliente puede dejar dos o más bicicletas en el mismo servicio.
+   *  Vacía en los servicios de sólo mano de obra. */
+  bicicletas: {
     id: string
     marca: string
     modelo: string | null
     color: string | null
     numero_serie: string | null
     tipo: string
-  } | null
+  }[]
   fecha_recepcion: string
   fecha_entrega: string | null
   tecnico_recepcion: UsuarioBrief | null

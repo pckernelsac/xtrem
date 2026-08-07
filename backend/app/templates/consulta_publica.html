@@ -95,12 +95,19 @@
   {% endif %}
 
   <div class="card">
-    <h2>{{ 'Tu bicicleta' if d.bicicleta else 'Tu servicio' }}</h2>
-    {% if d.bicicleta %}
-    <div class="dato"><span class="k">Equipo</span><span class="v">{{ [d.bicicleta.marca, d.bicicleta.modelo] | select | join(' ') }}</span></div>
-    {% if d.bicicleta.color %}<div class="dato"><span class="k">Color</span><span class="v">{{ d.bicicleta.color }}</span></div>{% endif %}
-    <div class="dato"><span class="k">Tipo</span><span class="v">{{ d.bicicleta.tipo }}</span></div>
-    {% endif %}
+    <h2>
+      {% if d.bicicletas | length > 1 %}Tus bicicletas
+      {% elif d.bicicletas %}Tu bicicleta
+      {% else %}Tu servicio{% endif %}
+    </h2>
+    {% for b in d.bicicletas %}
+    <div class="dato">
+      <span class="k">{{ 'Equipo %d'|format(loop.index) if d.bicicletas | length > 1 else 'Equipo' }}</span>
+      <span class="v">{{ [b.marca, b.modelo] | select | join(' ') }}</span>
+    </div>
+    {% if b.color %}<div class="dato"><span class="k">Color</span><span class="v">{{ b.color }}</span></div>{% endif %}
+    <div class="dato"><span class="k">Tipo</span><span class="v">{{ b.tipo }}</span></div>
+    {% endfor %}
     <div class="dato"><span class="k">Recepción</span><span class="v">{{ d.fecha_recepcion[:10] }}</span></div>
     {% if d.fecha_entrega %}<div class="dato"><span class="k">Entrega</span><span class="v">{{ d.fecha_entrega[:10] }}</span></div>{% endif %}
   </div>

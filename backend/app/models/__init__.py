@@ -26,6 +26,7 @@ from app.models.intento_login import IntentoLogin
 from app.models.ficha import (
     EstadoFicha,
     Ficha,
+    FichaBicicleta,
     FichaEstadoLog,
     FichaRepuesto,
     ServicioSolicitado,
@@ -72,6 +73,7 @@ __all__ = [
     "TipoComprobante",
     "EstadoFicha",
     "Ficha",
+    "FichaBicicleta",
     "FichaEstadoLog",
     "FichaRepuesto",
     "IntentoLogin",

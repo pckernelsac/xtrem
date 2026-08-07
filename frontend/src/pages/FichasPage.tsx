@@ -184,20 +184,22 @@ export default function FichasPage() {
                       </div>
                     </td>
                     <td className="px-4 py-2.5">
-                      {f.bicicleta ? (
-                        <>
-                          <Link
-                            to={`/bicicletas/${f.bicicleta.id}`}
-                            className="hover:text-primary hover:underline"
-                          >
-                            {[f.bicicleta.marca, f.bicicleta.modelo].filter(Boolean).join(" ")}
-                          </Link>
-                          {f.bicicleta.numero_serie && (
-                            <div className="tabular text-xs text-muted-foreground">
-                              {f.bicicleta.numero_serie}
-                            </div>
-                          )}
-                        </>
+                      {f.bicicletas.length ? (
+                        f.bicicletas.map((b) => (
+                          <div key={b.id}>
+                            <Link
+                              to={`/bicicletas/${b.id}`}
+                              className="hover:text-primary hover:underline"
+                            >
+                              {[b.marca, b.modelo].filter(Boolean).join(" ")}
+                            </Link>
+                            {b.numero_serie && (
+                              <span className="tabular ml-1.5 text-xs text-muted-foreground">
+                                {b.numero_serie}
+                              </span>
+                            )}
+                          </div>
+                        ))
                       ) : (
                         <span className="text-muted-foreground">—</span>
                       )}

@@ -227,7 +227,14 @@ def render_ficha_ticket(
             "margen_mm": settings.TICKET_MARGEN_MM,
             "publico": publico,
             "estado_label": ETIQUETAS_ESTADO[ficha.estado.value],
-            "bici_desc": ficha.bicicleta.descripcion if ficha.bicicleta else None,
+            "bicis": [
+                {
+                    "desc": b.descripcion,
+                    "tipo": b.tipo.value,
+                    "numero_serie": b.numero_serie,
+                }
+                for b in ficha.bicicletas
+            ],
             "servicios": [ETIQUETAS_SERVICIO.get(s, s) for s in (ficha.servicios or [])],
             "repuestos": [
                 {

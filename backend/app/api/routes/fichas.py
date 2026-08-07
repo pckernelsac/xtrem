@@ -20,6 +20,7 @@ from app.models.ficha import (
     ETIQUETAS_ESTADO,
     EstadoFicha,
     Ficha,
+    FichaBicicleta,
     FichaEstadoLog,
     FichaRepuesto,
 )
@@ -127,6 +128,147 @@ def _exigir_cobrable(ficha: Ficha) -> None:
         )
 
 
+def _aplicar_ajuste_adelanto(
+    db: Session,
+    ficha: Ficha,
+    nuevo: Decimal,
+    metodo_pedido: MetodoPago | None,
+    motivo: str | None,
+    actor_id: uuid.UUID | None,
+) -> bool:
+    """Deja el adelanto en `nuevo` y compensa la diferencia en caja.
+
+    El adelanto se cobró al recibir, así que corregirlo mueve dinero: la
+    diferencia se registra en la sesión de caja abierta —ingreso si sube,
+    egreso si baja o se devuelve—, que es donde debe verse el efectivo que
+    entra o sale hoy. Si además cambia el método, se revierte el cobro
+    anterior entero y se registra el nuevo, porque el arqueo cuenta cada medio
+    de pago por separado.
+
+    Devuelve False si no había nada que cambiar. No hace commit: el llamador
+    cierra la transacción, y así el ajuste viaja junto al resto de la edición.
+    """
+    # Con la venta creada el adelanto ya es un pago de esa venta —y del
+    # comprobante emitido encima—: cambiarlo dejaría el documento diciendo un
+    # importe y la venta pagada con otro.
+    if _venta_de_ficha(db, ficha.id) is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "El servicio ya fue cobrado y el adelanto forma parte de esa venta. "
+                "Anula el comprobante o emite una nota de crédito para corregirlo."
+            ),
+        )
+    if ficha.estado is EstadoFicha.CANCELADA:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="La ficha está cancelada y ya no admite cambios",
+        )
+
+    anterior = ficha.adelanto or CERO
+    metodo_anterior = ficha.adelanto_metodo or MetodoPago.EFECTIVO
+    metodo_nuevo = metodo_pedido or metodo_anterior
+
+    if nuevo > ficha.total:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=(
+                f"El adelanto (S/ {nuevo:.2f}) supera el total del servicio "
+                f"(S/ {ficha.total:.2f})"
+            ),
+        )
+
+    cambia_metodo = anterior > CERO and nuevo > CERO and metodo_nuevo is not metodo_anterior
+    if nuevo == anterior and not cambia_metodo:
+        return False
+
+    concepto = f"Ajuste de adelanto servicio N° {ficha.numero}"
+    movimientos: list[tuple[TipoMovimientoCaja, MetodoPago, Decimal]] = []
+    if cambia_metodo:
+        movimientos.append((TipoMovimientoCaja.EGRESO, metodo_anterior, anterior))
+        movimientos.append((TipoMovimientoCaja.INGRESO, metodo_nuevo, nuevo))
+    elif nuevo > anterior:
+        movimientos.append((TipoMovimientoCaja.INGRESO, metodo_nuevo, nuevo - anterior))
+    else:
+        movimientos.append((TipoMovimientoCaja.EGRESO, metodo_anterior, anterior - nuevo))
+
+    # El efectivo sale o entra del cajón y exige caja abierta; los métodos
+    # digitales sólo se anotan si hay sesión, igual que al crear la ficha.
+    hay_efectivo = any(metodo is MetodoPago.EFECTIVO for _, metodo, _ in movimientos)
+    sesion = exigir_sesion_abierta(db) if hay_efectivo else sesion_abierta(db)
+    if sesion is not None:
+        for tipo, metodo, monto in movimientos:
+            registrar_movimiento_caja(
+                db,
+                sesion,
+                tipo,
+                metodo,
+                monto,
+                concepto=concepto,
+                usuario_id=actor_id,
+                referencia=ficha.numero,
+            )
+
+    ficha.adelanto = nuevo
+    ficha.adelanto_metodo = metodo_nuevo if nuevo > CERO else None
+
+    detalle = f"Adelanto corregido de S/ {anterior:.2f} a S/ {nuevo:.2f}"
+    if cambia_metodo:
+        detalle += (
+            f" ({ETIQUETAS_METODO.get(metodo_anterior.value, metodo_anterior.value)}"
+            f" → {ETIQUETAS_METODO.get(metodo_nuevo.value, metodo_nuevo.value)})"
+        )
+    if motivo:
+        detalle += f" · {motivo}"
+
+    # El historial es la única traza visible del cambio en el mostrador; el
+    # estado no se mueve, sólo se anota el ajuste en la línea de tiempo.
+    ficha.historial_estados.append(
+        FichaEstadoLog(
+            estado_anterior=None,
+            estado_nuevo=ficha.estado,
+            usuario_id=actor_id,
+            comentario=detalle,
+        )
+    )
+    return True
+
+
+def _reemplazar_bicicletas(
+    db: Session,
+    ficha: Ficha,
+    bicicleta_ids: list[uuid.UUID],
+    cliente: Cliente,
+) -> None:
+    """Deja el servicio con exactamente esas bicicletas, en ese orden.
+
+    Se valida una a una contra el dueño: la ficha impresa da por hecho que
+    todas las máquinas son del cliente que las trajo, y una combinación
+    cruzada saldría en papel con datos incoherentes.
+    """
+    # Repetir una bicicleta la contaría dos veces en la ficha impresa. Se
+    # descarta el duplicado en lugar de fallar: para el mostrador es un
+    # doble clic, no un error que merezca perder lo escrito.
+    unicas: list[uuid.UUID] = []
+    for bid in bicicleta_ids:
+        if bid not in unicas:
+            unicas.append(bid)
+
+    ficha.bicicletas_asoc.clear()
+    db.flush()
+
+    for i, bid in enumerate(unicas):
+        bici = db.get(Bicicleta, bid)
+        if bici is None:
+            raise HTTPException(status_code=422, detail="La bicicleta indicada no existe")
+        if bici.cliente_id != cliente.id:
+            raise HTTPException(
+                status_code=422,
+                detail=f"La bicicleta pertenece a {bici.cliente.nombre}, no a {cliente.nombre}",
+            )
+        ficha.bicicletas_asoc.append(FichaBicicleta(bicicleta_id=bici.id, orden=i))
+
+
 def _reemplazar_repuestos(
     db: Session,
     ficha: Ficha,
@@ -212,20 +354,29 @@ def list_fichas(
 ) -> FichaPage:
     # Lo archivado se excluye por defecto: cualquier consumidor que no sepa de
     # esta bandera sigue viendo el tablero del taller y no el archivo entero.
-    stmt = select(Ficha).join(Cliente).outerjoin(Bicicleta)
+    stmt = select(Ficha).join(Cliente)
     stmt = stmt.where(
         Ficha.archivada_at.is_not(None) if archivadas else Ficha.archivada_at.is_(None)
     )
 
     if search:
         like = f"%{search.strip().lower()}%"
+        # Las bicicletas se filtran con EXISTS y no con un join: una ficha con
+        # dos bicicletas se duplicaría en el resultado, inflando el total y
+        # dejando páginas cortas.
         stmt = stmt.where(
             or_(
                 Ficha.numero.like(f"%{search.strip()}%"),
                 func.lower(Cliente.nombre).like(like),
                 func.lower(Cliente.numero_documento).like(like),
-                func.lower(Bicicleta.marca).like(like),
-                func.lower(func.coalesce(Bicicleta.numero_serie, "")).like(like),
+                Ficha.bicicletas_asoc.any(
+                    FichaBicicleta.bicicleta.has(
+                        or_(
+                            func.lower(Bicicleta.marca).like(like),
+                            func.lower(func.coalesce(Bicicleta.numero_serie, "")).like(like),
+                        )
+                    )
+                ),
             )
         )
     if estado:
@@ -233,7 +384,9 @@ def list_fichas(
     if cliente_id:
         stmt = stmt.where(Ficha.cliente_id == cliente_id)
     if bicicleta_id:
-        stmt = stmt.where(Ficha.bicicleta_id == bicicleta_id)
+        stmt = stmt.where(
+            Ficha.bicicletas_asoc.any(FichaBicicleta.bicicleta_id == bicicleta_id)
+        )
 
     total = db.scalar(select(func.count()).select_from(stmt.subquery())) or 0
     rows = (
@@ -276,26 +429,9 @@ def create_ficha(
     if cliente is None:
         raise HTTPException(status_code=422, detail="El cliente indicado no existe")
 
-    # La bicicleta es opcional: un servicio puede ser sólo mano de obra.
-    bici_id: uuid.UUID | None = None
-    if data.bicicleta_id is not None:
-        bici = db.get(Bicicleta, data.bicicleta_id)
-        if bici is None:
-            raise HTTPException(status_code=422, detail="La bicicleta indicada no existe")
-
-        # La ficha impresa asume que la bici pertenece al cliente que la trae.
-        # Aceptar una combinación cruzada produciría un PDF con datos incoherentes.
-        if bici.cliente_id != cliente.id:
-            raise HTTPException(
-                status_code=422,
-                detail=f"La bicicleta pertenece a {bici.cliente.nombre}, no a {cliente.nombre}",
-            )
-        bici_id = bici.id
-
     ficha = Ficha(
         numero=_siguiente_numero(db),
         cliente_id=cliente.id,
-        bicicleta_id=bici_id,
         estado=EstadoFicha.RECIBIDA,
         fecha_recepcion=data.fecha_recepcion or datetime.now(UTC),
         tecnico_recepcion_id=data.tecnico_recepcion_id or actor.id,
@@ -315,6 +451,7 @@ def create_ficha(
     db.add(ficha)
     db.flush()
 
+    _reemplazar_bicicletas(db, ficha, data.bicicleta_ids, cliente)
     _reemplazar_repuestos(db, ficha, data.repuestos, actor.id)
 
     # El adelanto entra a caja aquí, al recibir: es dinero que ya se cobró. El
@@ -375,6 +512,14 @@ def update_ficha(
 
     changes = data.model_dump(exclude_unset=True)
     repuestos = changes.pop("repuestos", None)
+    bicicleta_ids = changes.pop("bicicleta_ids", None)
+    # El adelanto no se asigna a pelo como los demás campos: mueve caja y lo
+    # aplica su propio ajuste, más abajo, cuando el total ya es el definitivo.
+    metodo_enviado = "adelanto_metodo" in changes
+    adelanto_nuevo = changes.pop("adelanto", None)
+    adelanto_metodo = changes.pop("adelanto_metodo", None)
+    if adelanto_nuevo is None and metodo_enviado:
+        adelanto_nuevo = ficha.adelanto or CERO
 
     if "servicios" in changes and changes["servicios"] is not None:
         changes["servicios"] = [
@@ -384,8 +529,17 @@ def update_ficha(
     for field, value in changes.items():
         setattr(ficha, field, value)
 
+    if bicicleta_ids is not None:
+        _reemplazar_bicicletas(db, ficha, bicicleta_ids, ficha.cliente)
+
     if repuestos is not None:
         _reemplazar_repuestos(db, ficha, [RepuestoIn(**r) for r in repuestos], actor.id)
+
+    # Va después de los repuestos porque el ajuste se valida contra el total, y
+    # la misma edición puede haberlo cambiado. Si el importe no varió no hace
+    # nada: el formulario manda el adelanto siempre, toque o no ese campo.
+    if adelanto_nuevo is not None:
+        _aplicar_ajuste_adelanto(db, ficha, adelanto_nuevo, adelanto_metodo, None, actor.id)
 
     # El adelanto ya se cobró en caja: dejar el total por debajo de él daría un
     # saldo negativo imposible de facturar y sin vía de devolución.
@@ -462,100 +616,19 @@ def ajustar_adelanto(
     debe reflejarse el dinero que entra o sale hoy.
 
     Se admite incluso con la ficha ENTREGADA, mientras no exista la venta: ese
-    es justo el momento en que el error salta, al ir a cobrar el saldo.
+    es justo el momento en que el error salta, al ir a cobrar el saldo, y para
+    entonces la edición normal de la ficha ya está cerrada.
     """
     ficha = _get_ficha(db, ficha_id)
 
-    # Con la venta creada el adelanto ya es un pago de esa venta —y del
-    # comprobante emitido encima—: cambiarlo dejaría el documento diciendo un
-    # importe y la venta pagada con otro.
-    if _venta_de_ficha(db, ficha.id) is not None:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=(
-                "El servicio ya fue cobrado y el adelanto forma parte de esa venta. "
-                "Anula el comprobante o emite una nota de crédito para corregirlo."
-            ),
-        )
-    if ficha.estado is EstadoFicha.CANCELADA:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="La ficha está cancelada y ya no admite cambios",
-        )
-
-    anterior = ficha.adelanto or CERO
-    metodo_anterior = ficha.adelanto_metodo or MetodoPago.EFECTIVO
-    nuevo = data.adelanto
-    metodo_nuevo = data.adelanto_metodo or metodo_anterior
-
-    if nuevo > ficha.total:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=(
-                f"El adelanto (S/ {nuevo:.2f}) supera el total del servicio "
-                f"(S/ {ficha.total:.2f})"
-            ),
-        )
-
-    sin_cambios = nuevo == anterior and (nuevo == CERO or metodo_nuevo is metodo_anterior)
-    if sin_cambios:
+    cambiado = _aplicar_ajuste_adelanto(
+        db, ficha, data.adelanto, data.adelanto_metodo, data.motivo, actor.id
+    )
+    if not cambiado:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="El adelanto ya tiene ese importe",
         )
-
-    # Qué tiene que ver la caja: la diferencia cuando el método no cambia, y el
-    # reverso completo más el nuevo cobro cuando sí cambia (son dos medios de
-    # pago distintos y el arqueo los cuenta por separado).
-    concepto = f"Ajuste de adelanto servicio N° {ficha.numero}"
-    movimientos: list[tuple[TipoMovimientoCaja, MetodoPago, Decimal]] = []
-    if anterior > CERO and nuevo > CERO and metodo_nuevo is not metodo_anterior:
-        movimientos.append((TipoMovimientoCaja.EGRESO, metodo_anterior, anterior))
-        movimientos.append((TipoMovimientoCaja.INGRESO, metodo_nuevo, nuevo))
-    elif nuevo > anterior:
-        movimientos.append((TipoMovimientoCaja.INGRESO, metodo_nuevo, nuevo - anterior))
-    elif nuevo < anterior:
-        movimientos.append((TipoMovimientoCaja.EGRESO, metodo_anterior, anterior - nuevo))
-
-    # El efectivo sale o entra del cajón y exige caja abierta; los métodos
-    # digitales sólo se anotan si hay sesión, igual que al crear la ficha.
-    hay_efectivo = any(metodo is MetodoPago.EFECTIVO for _, metodo, _ in movimientos)
-    sesion = exigir_sesion_abierta(db) if hay_efectivo else sesion_abierta(db)
-    if sesion is not None:
-        for tipo, metodo, monto in movimientos:
-            registrar_movimiento_caja(
-                db,
-                sesion,
-                tipo,
-                metodo,
-                monto,
-                concepto=concepto,
-                usuario_id=actor.id,
-                referencia=ficha.numero,
-            )
-
-    ficha.adelanto = nuevo
-    ficha.adelanto_metodo = metodo_nuevo if nuevo > CERO else None
-
-    detalle = f"Adelanto corregido de S/ {anterior:.2f} a S/ {nuevo:.2f}"
-    if anterior > CERO and nuevo > CERO and metodo_nuevo is not metodo_anterior:
-        detalle += (
-            f" ({ETIQUETAS_METODO.get(metodo_anterior.value, metodo_anterior.value)}"
-            f" → {ETIQUETAS_METODO.get(metodo_nuevo.value, metodo_nuevo.value)})"
-        )
-    if data.motivo:
-        detalle += f" · {data.motivo}"
-
-    # El historial es la única traza visible del cambio en el mostrador; el
-    # estado no se mueve, sólo se anota el ajuste en la línea de tiempo.
-    ficha.historial_estados.append(
-        FichaEstadoLog(
-            estado_anterior=None,
-            estado_nuevo=ficha.estado,
-            usuario_id=actor.id,
-            comentario=detalle,
-        )
-    )
 
     db.commit()
     db.refresh(ficha)

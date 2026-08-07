@@ -99,8 +99,9 @@ class FichaBase(BaseModel):
 
 class FichaCreate(FichaBase):
     cliente_id: uuid.UUID
-    #: Opcional: un servicio de sólo mano de obra no lleva bicicleta.
-    bicicleta_id: uuid.UUID | None = None
+    #: Varias: un cliente puede dejar dos o más bicicletas en el mismo servicio.
+    #: Vacío es válido: un servicio de sólo mano de obra no lleva ninguna.
+    bicicleta_ids: list[uuid.UUID] = Field(default_factory=list, max_length=20)
     fecha_recepcion: datetime | None = None
     tecnico_recepcion_id: uuid.UUID | None = None
     tecnico_responsable_id: uuid.UUID | None = None
@@ -118,6 +119,12 @@ class FichaUpdate(FichaBase):
     tecnico_recepcion_id: uuid.UUID | None = None
     tecnico_responsable_id: uuid.UUID | None = None
     tecnico_entrega_id: uuid.UUID | None = None
+    #: Si viene, reemplaza la lista completa de bicicletas del servicio.
+    bicicleta_ids: list[uuid.UUID] | None = Field(default=None, max_length=20)
+    #: Corregir el adelanto mueve caja: la diferencia se compensa con su propio
+    #: movimiento en la sesión abierta, no se reescribe el cobro de recepción.
+    adelanto: Decimal | None = Field(default=None, ge=0, max_digits=10, decimal_places=2)
+    adelanto_metodo: MetodoPago | None = None
     #: Si viene, reemplaza la tabla completa de repuestos (no hace merge fila a fila).
     repuestos: list[RepuestoIn] | None = None
 
@@ -157,7 +164,8 @@ class FichaOut(BaseModel):
     numero: str
     estado: EstadoFicha
     cliente: ClienteFicha
-    bicicleta: BicicletaFicha | None
+    #: Puede venir vacía: hay servicios de sólo mano de obra.
+    bicicletas: list[BicicletaFicha] = Field(default_factory=list)
     fecha_recepcion: datetime
     fecha_entrega: datetime | None
     tecnico_recepcion: UsuarioFicha | None

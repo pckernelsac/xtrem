@@ -8,7 +8,7 @@ from app.api.deps import require_permission
 from app.db.session import get_db
 from app.models.bicicleta import Bicicleta
 from app.models.cliente import Cliente
-from app.models.ficha import ETIQUETAS_ESTADO, ETIQUETAS_SERVICIO, Ficha
+from app.models.ficha import ETIQUETAS_ESTADO, ETIQUETAS_SERVICIO, Ficha, FichaBicicleta
 from app.models.user import User
 from app.schemas.bicicleta import (
     BicicletaCreate,
@@ -111,8 +111,12 @@ def get_bicicleta(
         )
     ]
 
+    # Un servicio puede atender varias bicicletas: aquí interesan los que
+    # incluyeron ésta, sea sola o acompañada.
     fichas = db.scalars(
-        select(Ficha).where(Ficha.bicicleta_id == bici.id).order_by(Ficha.fecha_recepcion)
+        select(Ficha)
+        .where(Ficha.bicicletas_asoc.any(FichaBicicleta.bicicleta_id == bici.id))
+        .order_by(Ficha.fecha_recepcion)
     ).unique().all()
 
     for f in fichas:
@@ -203,7 +207,11 @@ def eliminar_bicicleta(
         raise HTTPException(status_code=404, detail="Bicicleta no encontrada")
 
     fichas = (
-        db.scalar(select(func.count()).select_from(Ficha).where(Ficha.bicicleta_id == bicicleta_id))
+        db.scalar(
+            select(func.count())
+            .select_from(FichaBicicleta)
+            .where(FichaBicicleta.bicicleta_id == bicicleta_id)
+        )
         or 0
     )
     if fichas:

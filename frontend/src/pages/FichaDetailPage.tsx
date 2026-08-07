@@ -208,8 +208,11 @@ export default function FichaDetailPage() {
   }
 
   const cerrada = ESTADOS_FINALES.includes(f.estado)
-  const biciTexto = f.bicicleta
-    ? [f.bicicleta.marca, f.bicicleta.modelo].filter(Boolean).join(" ")
+  // En la cabecera cabe una: con varias se nombra la primera y se cuenta el
+  // resto, que es como se pide en el mostrador ("la Trek y una más").
+  const biciTexto = f.bicicletas.length
+    ? [f.bicicletas[0].marca, f.bicicletas[0].modelo].filter(Boolean).join(" ") +
+      (f.bicicletas.length > 1 ? ` +${f.bicicletas.length - 1}` : "")
     : "Sin bicicleta"
   // El servicio se cobra una sola vez: mientras no exista la venta se puede
   // elegir el papel (nota de venta o comprobante electrónico); después ya sólo
@@ -335,24 +338,34 @@ export default function FichaDetailPage() {
           />
           <Dato label="Documento" value={`${f.cliente.tipo_documento} ${f.cliente.numero_documento}`} />
           <Dato label="Teléfono" value={f.cliente.telefono} />
+          {/* Un servicio puede haber recibido varias: cada una con su enlace y
+              su número de serie, que es como se identifican al entregarlas. */}
           <Dato
-            label="Bicicleta"
+            label={f.bicicletas.length > 1 ? "Bicicletas" : "Bicicleta"}
             value={
-              f.bicicleta ? (
-                <Link
-                  to={`/bicicletas/${f.bicicleta.id}`}
-                  className="hover:text-primary hover:underline"
-                >
-                  {[f.bicicleta.marca, f.bicicleta.modelo, f.bicicleta.color]
-                    .filter(Boolean)
-                    .join(" ")}
-                </Link>
+              f.bicicletas.length ? (
+                <ul className="space-y-1">
+                  {f.bicicletas.map((b) => (
+                    <li key={b.id}>
+                      <Link
+                        to={`/bicicletas/${b.id}`}
+                        className="hover:text-primary hover:underline"
+                      >
+                        {[b.marca, b.modelo, b.color].filter(Boolean).join(" ")}
+                      </Link>
+                      {b.numero_serie && (
+                        <span className="tabular ml-1.5 text-xs text-muted-foreground">
+                          {b.numero_serie}
+                        </span>
+                      )}
+                    </li>
+                  ))}
+                </ul>
               ) : (
                 <span className="text-muted-foreground">Sin bicicleta</span>
               )
             }
           />
-          <Dato label="N° de serie" value={f.bicicleta?.numero_serie} />
           <Dato label="Técnico que recibió" value={f.tecnico_recepcion?.full_name} />
           <Dato label="Técnico responsable" value={f.tecnico_responsable?.full_name} />
           <Dato label="¿Cómo nos conoció?" value={f.canal_referencia} />
